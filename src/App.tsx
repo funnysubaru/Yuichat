@@ -1,0 +1,133 @@
+/**
+ * 1.0.0: YUIChat 项目 - 主应用组件
+ * ChatMax 风格布局
+ * 1.1.5: 添加认证页面，未登录显示登录页
+ */
+
+import { useState, useEffect } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Sidebar } from './components/Sidebar';
+import { TopNav } from './components/TopNav';
+import { ChatInterface } from './components/ChatInterface';
+import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
+import { AllProjectsPage } from './pages/AllProjectsPage';
+import { SharePage } from './pages/SharePage';
+import { AuthPage } from './pages/AuthPage';
+import { AuthModal } from './components/AuthModal';
+import { getCurrentUser, onAuthStateChange } from './services/authService';
+import { isSupabaseAvailable } from './lib/supabase';
+import type { User } from '@supabase/supabase-js';
+import './i18n';
+
+function App() {
+  const { t, i18n } = useTranslation();
+  const location = useLocation();
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // 1.1.5: 添加加载状态
+
+  // Check if current route should show sidebar and top nav
+  const showLayout = !location.pathname.startsWith('/share');
+
+  useEffect(() => {
+    // Load initial user
+    const loadUser = async () => {
+      setIsLoading(true);
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+      setIsLoading(false);
+    };
+
+    loadUser();
+
+    // Subscribe to auth changes
+    const { unsubscribe } = onAuthStateChange((currentUser) => {
+      setUser(currentUser);
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  const handleAuthSuccess = () => {
+    setIsAuthModalOpen(false);
+    getCurrentUser().then(setUser);
+  };
+
+  // 1.1.5: 加载中显示加载状态
+  if (isLoading && isSupabaseAvailable) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // 1.1.5: 如果用户未登录且不是分享页面，显示认证页面
+  if (!user && isSupabaseAvailable && !location.pathname.startsWith('/share') && !location.pathname.startsWith('/auth')) {
+    return <AuthPage />;
+  }
+
+  return (
+    <div className="min-h-screen bg-white">
+      <Routes>
+        {/* Auth Page - No layout */}
+        <Route path="/auth" element={<AuthPage />} />
+        
+        {/* Share Page - No layout */}
+        <Route path="/share/:shareToken" element={<div>{t('externalShare')}</div>} />
+
+        {/* Main App Routes */}
+        <Route
+          path="*"
+          element={
+            <div className="flex h-screen overflow-hidden">
+              {/* Sidebar */}
+              {showLayout && (
+                <Sidebar
+                  isCollapsed={isSidebarCollapsed}
+                  onCollapsedChange={setIsSidebarCollapsed}
+                />
+              )}
+
+              {/* Main Content */}
+              <div className="flex-1 flex flex-col min-w-0">
+                {/* Top Nav - Only show on knowledge base pages */}
+                {showLayout && location.pathname.startsWith('/knowledge-base') && (
+                  <TopNav />
+                )}
+
+                {/* Page Content */}
+                <main className="flex-1 overflow-y-auto">
+                  <Routes>
+                    <Route path="/" element={<AllProjectsPage />} />
+                    <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
+                    <Route path="/knowledge-base/documents" element={<KnowledgeBasePage />} />
+                    <Route path="/chat" element={<ChatInterface />} />
+                    <Route path="/settings" element={<div className="p-8">{t('projectSettings')}</div>} />
+                    <Route path="/share" element={<SharePage />} />
+                    <Route path="/dashboard" element={<div className="p-8">{t('dashboard')}</div>} />
+                  </Routes>
+                </main>
+              </div>
+
+              {/* Auth Modal */}
+              <AuthModal
+                isOpen={isAuthModalOpen}
+                onClose={() => setIsAuthModalOpen(false)}
+                onSuccess={handleAuthSuccess}
+              />
+            </div>
+          }
+        />
+      </Routes>
+    </div>
+  );
+}
+
+export default App;
+

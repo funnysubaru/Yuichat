@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+output/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+scripts/test-result/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Supabase local
+.branches/
+.temp/
+.supabase/
+backend/supabase/config.toml
+
+# Backup files
+backup/
+*.backup
+**/*.backup
+
+# Local development configs
+backend/wrangler.toml
+check-env-vars.js
+
+# Version snapshots
+.versions/
+
