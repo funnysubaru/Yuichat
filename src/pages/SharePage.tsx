@@ -1,6 +1,7 @@
 /**
  * 1.1.2: 外部分享页面
- * 用于生成和管理直接面向用户的 Chainlit 聊天链接
+ * 1.2.24: 更新为生成前端公开聊天链接（替代 Chainlit）
+ * 用于生成和管理直接面向用户的聊天链接，支持流式输出
  */
 
 import { useState, useEffect } from 'react';
@@ -63,9 +64,9 @@ export function SharePage() {
     fetchKB();
   }, [searchParams.get('project')]); // 1.1.14: 监听项目ID参数变化
 
-  const chainlitBaseUrl = import.meta.env.VITE_CHAINLIT_URL || 'http://localhost:8000';
-  // 1.1.2: 使用 share_token 作为 kb_id 参数
-  const shareUrl = kb ? `${chainlitBaseUrl}/?kb_id=${kb.share_token}` : '';
+  // 1.2.24: 使用前端 URL 替代 Chainlit URL，支持流式输出
+  const frontendBaseUrl = window.location.origin; // 自动获取当前域名
+  const shareUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}` : '';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrl);
@@ -78,9 +79,11 @@ export function SharePage() {
     if (!kb) return;
     setIsRefreshing(true);
     try {
+      const newToken = crypto.randomUUID();
+      // @ts-ignore - Supabase 类型定义问题
       const { data, error } = await supabase
         .from('knowledge_bases')
-        .update({ share_token: crypto.randomUUID() })
+        .update({ share_token: newToken })
         .eq('id', kb.id)
         .select()
         .single();

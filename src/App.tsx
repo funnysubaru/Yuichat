@@ -13,6 +13,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import { AllProjectsPage } from './pages/AllProjectsPage';
 import { SharePage } from './pages/SharePage';
+import { PublicChatPage } from './pages/PublicChatPage'; // 1.2.24: 公开聊天页面
 import { SettingsPage } from './pages/SettingsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { AuthPage } from './pages/AuthPage';
@@ -83,8 +84,9 @@ function App() {
         {/* Auth Page - No layout */}
         <Route path="/auth" element={<AuthPage />} />
         
-        {/* Share Page - No layout */}
-        <Route path="/share/:shareToken" element={<div>{t('externalShare')}</div>} />
+        {/* Public Chat Page - No layout, no login required */}
+        {/* 1.2.24: 公开聊天页面，通过 share_token 访问，无需登录 */}
+        <Route path="/share/:shareToken" element={<PublicChatPage />} />
 
         {/* Main App Routes */}
         <Route
