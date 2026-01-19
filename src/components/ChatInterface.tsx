@@ -3,6 +3,11 @@
  * 适配 LangGraph 后端，支持本地测试
  * 1.1.10: 完善测试对话功能，支持基于知识库文档的对话
  * 1.2.10: 修复AI头像重复显示问题，streaming状态时完全隐藏消息，只显示loading行
+ * 1.2.13: 集成对话记录侧边栏，支持对话管理和历史记录
+ * 1.2.14: 修复对话记录未保存问题，添加创建对话和防重复保存机制
+ * 1.2.16: 优化布局，输入框固定在底部，对话记录改为浮窗形式
+ * 1.2.17: 输入框固定在网页最下方，使用fixed定位
+ * 1.2.23: 实现项目头像显示功能，消息列表和加载状态都使用项目设置的头像，未设置时使用默认头像
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -13,9 +18,47 @@ import { Send, Bot, User, Loader2, ExternalLink } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
 import type { ChatMessage, Citation } from '../types/chat';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ConversationHistorySidebar } from './ConversationHistorySidebar';
 import { logger } from '../utils/logger';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast'; // 1.1.15: 导入 toast 用于错误提示
+import {
+  createConversation,
+  saveMessage,
+  updateConversationTitle,
+  addConversation,
+} from '../services/conversationService';
+import { getCurrentUser } from '../services/authService';
+
+// 1.2.23: AI头像组件
+interface AvatarProps {
+  avatarUrl: string | null;
+  size?: 'sm' | 'md';
+}
+
+function Avatar({ avatarUrl, size = 'md' }: AvatarProps) {
+  const [hasError, setHasError] = useState(false);
+  const sizeClass = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
+  const iconSize = size === 'sm' ? 'w-5 h-5' : 'w-5 h-5';
+  
+  // 如果没有头像URL或加载失败，显示默认图标
+  if (!avatarUrl || hasError) {
+    return (
+      <div className={`${sizeClass} bg-primary rounded-full flex items-center justify-center flex-shrink-0`}>
+        <Bot className={`${iconSize} text-white`} />
+      </div>
+    );
+  }
+  
+  return (
+    <img
+      src={avatarUrl}
+      alt="AI Assistant"
+      className={`${sizeClass} rounded-full object-cover flex-shrink-0`}
+      onError={() => setHasError(true)}
+    />
+  );
+}
 
 interface ChatInterfaceProps {
   language?: string;
@@ -46,6 +89,8 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
   const fetchingQuestionsRef = useRef<boolean>(false); // 1.2.11: 防止重复请求
   const abortControllerRef = useRef<AbortController | null>(null); // 1.2.11: 用于取消请求
   const configLoadedRef = useRef<string | null>(null); // 1.2.11: 跟踪已加载配置的知识库ID，防止重复加载
+  const savedMessageIdsRef = useRef<Set<string>>(new Set()); // 1.2.14: 跟踪已保存的消息ID，防止重复保存
+  const [sidebarWidth, setSidebarWidth] = useState(240); // 1.2.17: 侧边栏宽度状态
 
   const {
     messages,
@@ -58,6 +103,9 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
     newConversation,
     setCurrentKbId,
     currentKbId: storeKbId, // 1.2.1: 从store获取当前的kbId
+    currentConversationId, // 1.2.13: 当前对话ID
+    setCurrentConversationId, // 1.2.13: 设置当前对话ID
+    addConversation, // 1.2.13: 添加对话到列表
   } = useChatStore();
 
   // 1.1.15: 从URL参数加载当前知识库，确保知识库隔离
@@ -219,11 +267,22 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  // 1.2.16: 当有新消息时自动滚动到底部
+  useEffect(() => {
+    if (messages.length > 0) {
+      // 使用setTimeout确保DOM更新后再滚动
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+    }
+  }, [messages, scrollToBottom]);
+  
+  // 1.2.16: 当正在输入时也滚动到底部
   useEffect(() => {
     if (isStreaming || isTyping) {
       scrollToBottom();
     }
-  }, [messages, isStreaming, isTyping, scrollToBottom]);
+  }, [isStreaming, isTyping, scrollToBottom]);
 
   // 1.2.0: 获取高频问题（当项目未配置推荐问题时使用）
   // 1.2.5: 改进错误处理，API 失败时使用默认问题
@@ -465,8 +524,52 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
     };
   }, []);
 
+  // 1.2.23: 获取AI头像URL的辅助函数
+  // 优先使用项目设置的头像，如果没有则返回null（使用默认图标）
+  const getAvatarUrl = useCallback(() => {
+    return chatConfig?.avatarUrl || currentKb?.chat_config?.avatar_url || null;
+  }, [chatConfig?.avatarUrl, currentKb?.chat_config?.avatar_url]);
+
+  // 1.2.17: 检测侧边栏宽度
+  useEffect(() => {
+    const updateSidebarWidth = () => {
+      const sidebar = document.querySelector('[class*="bg-gray-50"][class*="border-r"]') as HTMLElement;
+      if (sidebar) {
+        const width = sidebar.offsetWidth;
+        setSidebarWidth(width);
+      } else {
+        // 如果没有找到侧边栏，可能是分享页面，设置为0
+        setSidebarWidth(0);
+      }
+    };
+
+    // 初始检测
+    updateSidebarWidth();
+
+    // 监听窗口大小变化
+    window.addEventListener('resize', updateSidebarWidth);
+
+    // 使用 MutationObserver 监听侧边栏类名变化（展开/收起）
+    const observer = new MutationObserver(updateSidebarWidth);
+    const sidebar = document.querySelector('[class*="bg-gray-50"][class*="border-r"]');
+    if (sidebar) {
+      observer.observe(sidebar, {
+        attributes: true,
+        attributeFilter: ['class'],
+        childList: false,
+        subtree: false,
+      });
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateSidebarWidth);
+      observer.disconnect();
+    };
+  }, []);
+
   // 1.2.0: 处理推荐问题点击
   // 1.2.9: 修复点击无反应问题，添加调试日志和错误处理
+  // 1.2.14: 添加创建对话和保存消息的逻辑
   const handleRecommendedQuestionClick = async (question: string) => {
     if (import.meta.env.DEV) {
       logger.log('Recommended question clicked:', { question, isTyping, hasCurrentKb: !!currentKb });
@@ -492,6 +595,26 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
         logger.warn('Cannot click: question is empty');
       }
       return;
+    }
+
+    // 1.2.14: 如果没有对话，创建新对话
+    if (!currentConversationId && messages.length === 0) {
+      try {
+        const user = await getCurrentUser();
+        if (!user) {
+          toast.error('请先登录');
+          return;
+        }
+
+        const title = chatConfig?.welcomeMessage?.substring(0, 50) || '新对话';
+        const conversation = await createConversation(currentKb.id, user.id, title);
+        addConversation(conversation);
+        setCurrentConversationId(conversation.id);
+      } catch (error) {
+        logger.error('Error creating conversation:', error);
+        toast.error('创建对话失败');
+        return;
+      }
     }
     
     const query = question.trim();
@@ -561,10 +684,22 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
       }
       
       // 1.1.10: 更新消息内容
+      // 1.2.14: 添加citations支持
       updateMessage(assistantMessageId, {
         content: data.answer || '抱歉，我无法回答这个问题。',
         status: 'completed',
+        citations: data.citations || [],
       });
+
+      // 1.2.14: 如果是第一条AI回复，更新对话标题
+      if (currentConversationId && messages.length === 0) {
+        const title = (data.answer || '新对话').substring(0, 50);
+        try {
+          await updateConversationTitle(currentConversationId, title);
+        } catch (error) {
+          logger.error('Error updating conversation title:', error);
+        }
+      }
       
       if (import.meta.env.DEV) {
         logger.log('Chat response:', data);
@@ -596,6 +731,28 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
     const query = input.trim();
     setInput('');
     setIsTyping(true);
+
+    // 1.2.13: 如果没有对话，创建新对话
+    if (!currentConversationId && messages.length === 0) {
+      try {
+        const user = await getCurrentUser();
+        if (!user) {
+          toast.error('请先登录');
+          setIsTyping(false);
+          return;
+        }
+
+        const title = chatConfig?.welcomeMessage?.substring(0, 50) || '新对话';
+        const conversation = await createConversation(currentKb.id, user.id, title);
+        addConversation(conversation);
+        setCurrentConversationId(conversation.id);
+      } catch (error) {
+        logger.error('Error creating conversation:', error);
+        toast.error('创建对话失败');
+        setIsTyping(false);
+        return;
+      }
+    }
 
     const userMessageId = addMessage({
       role: 'user',
@@ -663,7 +820,10 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
       updateMessage(assistantMessageId, {
         content: data.answer || '抱歉，我无法回答这个问题。',
         status: 'completed',
+        citations: data.citations || [],
       });
+
+      // 1.2.15: 标题更新逻辑已移至 autoSaveMessage，这里不再需要
       
       if (import.meta.env.DEV) {
         logger.log('Chat response:', data);
@@ -693,36 +853,135 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
   const chainlitUrl = currentKb ? `${import.meta.env.VITE_CHAINLIT_URL || 'http://localhost:8000'}/?kb_id=${currentKb.share_token}` : '';
 
   // 1.1.10: 处理新建对话
-  const handleNewConversation = () => {
+  // 1.2.13: 修改为清空对话并创建新的对话记录
+  // 1.2.14: 重置已保存消息ID集合
+  const handleNewConversation = async () => {
     if (confirm('确定要开始新对话吗？当前对话将被清除。')) {
       newConversation();
+      savedMessageIdsRef.current.clear(); // 1.2.14: 清空已保存消息ID集合
     }
   };
 
+  // 1.2.13: 处理新对话
+  // 1.2.14: 重置已保存消息ID集合
+  const handleNewConversationFromSidebar = async () => {
+    clearMessages();
+    setCurrentConversationId(null);
+    savedMessageIdsRef.current.clear(); // 1.2.14: 清空已保存消息ID集合
+    if (import.meta.env.DEV) {
+      logger.log('New conversation created from sidebar');
+    }
+  };
+
+  // 1.2.13: 处理选择对话
+  // 1.2.14: 重置已保存消息ID集合
+  const handleConversationSelect = async (conversationId: string) => {
+    setCurrentConversationId(conversationId);
+    savedMessageIdsRef.current.clear(); // 1.2.14: 切换对话时清空已保存消息ID集合
+    if (import.meta.env.DEV) {
+      logger.log('Conversation selected:', conversationId);
+    }
+  };
+
+  // 1.2.13: 自动保存消息到数据库
+  // 1.2.14: 修复标题更新逻辑，防止重复保存
+  const autoSaveMessage = useCallback(
+    async (message: ChatMessage) => {
+      if (!currentConversationId || !currentKb) return;
+
+      // 1.2.14: 防止重复保存
+      if (savedMessageIdsRef.current.has(message.id)) {
+        if (import.meta.env.DEV) {
+          logger.log('Message already saved, skipping:', message.id);
+        }
+        return;
+      }
+
+      try {
+        const user = await getCurrentUser();
+        if (!user) return;
+
+        // 1.2.13: 保存消息到数据库
+        await saveMessage(
+          currentConversationId,
+          message.role,
+          message.content,
+          {
+            citations: message.citations || [],
+          }
+        );
+
+        // 1.2.14: 标记消息已保存
+        savedMessageIdsRef.current.add(message.id);
+
+        // 1.2.15: 修复标题更新逻辑：优先使用用户的第一条问题，只有当没有用户提问时才使用AI回复
+        const completedMessages = messages.filter(msg => msg.status === 'completed');
+        const userMessages = completedMessages.filter(msg => msg.role === 'user');
+        const assistantMessages = completedMessages.filter(msg => msg.role === 'assistant');
+        
+        // 1.2.15: 如果保存的是用户的第一条消息，使用用户消息作为标题
+        if (message.role === 'user' && userMessages.length === 1) {
+          const title = message.content.substring(0, 50);
+          await updateConversationTitle(currentConversationId, title);
+        }
+        // 1.2.15: 如果保存的是AI回复，且没有用户消息（只有AI欢迎语），才使用AI回复作为标题
+        else if (message.role === 'assistant' && assistantMessages.length === 1 && userMessages.length === 0) {
+          const title = message.content.substring(0, 50);
+          await updateConversationTitle(currentConversationId, title);
+        }
+      } catch (error) {
+        logger.error('Error auto-saving message:', error);
+        // 1.2.13: 静默失败，不影响用户体验
+      }
+    },
+    [currentConversationId, currentKb, messages]
+  );
+
+  // 1.2.13: 监听消息变化，自动保存
+  // 1.2.14: 当对话ID变化时，重置已保存消息ID集合
+  useEffect(() => {
+    if (currentConversationId) {
+      savedMessageIdsRef.current.clear(); // 1.2.14: 切换对话时清空已保存消息ID集合
+    }
+  }, [currentConversationId]);
+
+  useEffect(() => {
+    if (messages.length === 0 || !currentConversationId) return;
+
+    const lastMessage = messages[messages.length - 1];
+    // 1.2.13: 只保存已完成的消息
+    if (lastMessage.status === 'completed') {
+      autoSaveMessage(lastMessage);
+    }
+  }, [messages, currentConversationId, autoSaveMessage]);
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-white">
-      {/* 1.1.2: 顶部提示栏 */}
-      <div className="bg-purple-50 px-4 py-2 border-b border-purple-100 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-purple-700">这是内部测试界面。直接面向用户的界面请使用 Chainlit。</span>
-          {/* 1.1.10: 新建对话按钮 */}
-          {messages.length > 0 && (
-            <button
-              onClick={handleNewConversation}
-              className="text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
-            >
-              新建对话
-            </button>
+    <div className="flex-1 flex flex-row min-h-0 bg-white relative">
+      {/* 1.2.13: 主聊天区域 */}
+      <div className="flex-1 flex flex-col min-w-0 h-full">
+        {/* 1.1.2: 顶部提示栏 */}
+        <div className="bg-purple-50 px-4 py-2 border-b border-purple-100 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-purple-700">这是内部测试界面。直接面向用户的界面请使用 Chainlit。</span>
+            {/* 1.1.10: 新建对话按钮 */}
+            {messages.length > 0 && (
+              <button
+                onClick={handleNewConversation}
+                className="text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
+              >
+                新建对话
+              </button>
+            )}
+          </div>
+          {chainlitUrl && (
+            <a href={chainlitUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-purple-600 flex items-center gap-1 hover:text-purple-700 hover:underline">
+              打开面向用户界面 <ExternalLink className="w-3 h-3" />
+            </a>
           )}
         </div>
-        {chainlitUrl && (
-          <a href={chainlitUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
-            打开面向用户界面 <ExternalLink className="w-3 h-3" />
-          </a>
-        )}
-      </div>
 
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+        {/* 1.2.17: 对话消息区域 - 可滚动，为底部固定输入框留出空间 */}
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-24 space-y-4 min-h-0">
         {messages.length === 0 ? (
           // 1.2.7: 优化欢迎界面UI，使其更像聊天消息样式
           // 1.2.12: 如果chatConfig还未加载或问题还在加载中，显示loading状态，避免欢迎语和问题不同步显示
@@ -730,34 +989,14 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
             <div className="flex flex-col min-h-full py-8">
               {/* Loading状态 - 聊天消息样式 */}
               <div className="flex gap-3 justify-start">
-                {/* AI头像 - 显示用户配置的头像，如果还没有配置则显示骨架屏，避免默认头像闪烁 */}
+                {/* AI头像 - 1.2.23: 使用Avatar组件，显示用户配置的头像，如果还没有配置则显示默认头像 */}
                 <div className="flex-shrink-0">
-                  {(() => {
-                    // 优先从chatConfig获取，如果没有则从currentKb获取
-                    const avatarUrl = chatConfig?.avatarUrl || currentKb?.chat_config?.avatar_url || '';
-                    if (avatarUrl) {
-                      // 如果有配置的头像，直接显示
-                      return (
-                        <img
-                          src={avatarUrl}
-                          alt="AI Assistant"
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                      );
-                    } else if (currentKb) {
-                      // 如果currentKb已加载但没有配置头像，显示默认头像（知识库已加载，确认没有配置头像）
-                      return (
-                        <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-dark rounded-full flex items-center justify-center">
-                          <Bot className="w-5 h-5 text-white" />
-                        </div>
-                      );
-                    } else {
-                      // 如果currentKb还没有加载，显示骨架屏（避免默认头像闪烁）
-                      return (
-                        <div className="w-10 h-10 bg-gray-200 rounded-full animate-pulse"></div>
-                      );
-                    }
-                  })()}
+                  {currentKb ? (
+                    <Avatar avatarUrl={getAvatarUrl()} size="md" />
+                  ) : (
+                    // 如果currentKb还没有加载，显示骨架屏（避免默认头像闪烁）
+                    <div className="w-10 h-10 bg-gray-200 rounded-full animate-pulse"></div>
+                  )}
                 </div>
                 
                 {/* Loading消息气泡 */}
@@ -782,19 +1021,9 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
             <div className="flex flex-col min-h-full py-8">
               {/* AI消息气泡 - 包含头像和欢迎语 */}
               <div className="flex gap-3 justify-start mb-6">
-                {/* AI头像 */}
+                {/* AI头像 - 1.2.23: 使用Avatar组件 */}
                 <div className="flex-shrink-0">
-                  {chatConfig.avatarUrl ? (
-                    <img
-                      src={chatConfig.avatarUrl}
-                      alt="AI Assistant"
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-dark rounded-full flex items-center justify-center">
-                      <Bot className="w-5 h-5 text-white" />
-                    </div>
-                  )}
+                  <Avatar avatarUrl={getAvatarUrl()} size="md" />
                 </div>
                 
                 {/* 欢迎语消息气泡 */}
@@ -875,9 +1104,8 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
             return (
               <motion.div key={message.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-5 h-5 text-white" />
-                  </div>
+                  // 1.2.23: 使用项目头像，如果没有设置则使用默认头像
+                  <Avatar avatarUrl={getAvatarUrl()} size="sm" />
                 )}
                 <div className={`max-w-[80%] rounded-lg px-4 py-3 ${message.role === 'user' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-900'}`}>
                   {message.role === 'assistant' ? (
@@ -907,25 +1135,35 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
         )}
         {isTyping && (
           <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-              <Bot className="w-5 h-5 text-white" />
-            </div>
+            {/* 1.2.23: 使用项目头像，如果没有设置则使用默认头像 */}
+            <Avatar avatarUrl={getAvatarUrl()} size="sm" />
             <div className="bg-gray-100 rounded-lg px-4 py-3">
               <span className="inline-block text-gray-400 font-semibold yui-loading-animation text-sm">YUI</span>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
-      </div>
-
-      <div className="border-t border-gray-200 p-4 bg-white">
-        <div className="flex gap-2">
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyPress={handleKeyPress} placeholder={t('chatInputPlaceholder')} disabled={isTyping} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed" />
-          <button onClick={handleSend} disabled={!input.trim() || isTyping} className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2">
-            {isTyping ? <span className="inline-block text-white font-semibold yui-loading-animation text-xs">YUI</span> : <Send className="w-5 h-5" />}
-          </button>
         </div>
       </div>
+
+      {/* 1.2.17: 输入框固定在网页最下方 */}
+      <div className="fixed bottom-0 right-0 border-t border-gray-200 bg-white z-40" style={{ left: `${sidebarWidth}px` }}>
+        <div className="px-4 py-4">
+          <div className="flex gap-2">
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyPress={handleKeyPress} placeholder={t('chatInputPlaceholder')} disabled={isTyping} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed" />
+            <button onClick={handleSend} disabled={!input.trim() || isTyping} className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2">
+              {isTyping ? <span className="inline-block text-white font-semibold yui-loading-animation text-xs">YUI</span> : <Send className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 1.2.16: 对话记录浮窗 */}
+      <ConversationHistorySidebar
+        kbId={currentKb?.id || null}
+        onConversationSelect={handleConversationSelect}
+        onNewConversation={handleNewConversationFromSidebar}
+      />
     </div>
   );
 }
