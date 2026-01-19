@@ -1,11 +1,14 @@
-import chainlit as cl
+# 1.2.24: 移除 Chainlit 依赖，使用独立的 FastAPI 应用
+# import chainlit as cl  # 1.2.23: 已替代，使用流式 /api/chat/stream
 from langchain_core.messages import HumanMessage, AIMessage
-from workflow import app as workflow_app
-from fastapi import Request, HTTPException
-from fastapi.responses import JSONResponse
+from workflow import app as workflow_app, chat_node_stream  # 1.2.24: 导入流式聊天函数
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 import os
 import uuid
 import re  # 1.1.13: 导入 re 用于 collection_name 验证
+import json  # 1.2.24: 用于 SSE 数据格式化
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -19,8 +22,21 @@ supabase: Client = None
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-# 1.1.2: 获取 FastAPI 实例以添加自定义路由
-from chainlit.server import app as fastapi_app
+# 1.2.24: 创建独立的 FastAPI 应用，替代 Chainlit
+fastapi_app = FastAPI(
+    title="YUIChat API",
+    description="YUIChat 后端 API，提供知识库管理和聊天功能",
+    version="1.2.24"
+)
+
+# 1.2.24: 添加 CORS 中间件，允许前端访问
+fastapi_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境应该限制具体域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @fastapi_app.post("/api/process-file")
 async def process_file(request: Request):
@@ -53,7 +69,9 @@ async def process_file(request: Request):
         }
         
         # 执行工作流
-        final_state = await cl.make_async(workflow_app.invoke)(initial_state)
+        # 1.2.24: 移除 cl.make_async，使用 asyncio.to_thread 处理同步调用
+        import asyncio
+        final_state = await asyncio.to_thread(workflow_app.invoke, initial_state)
         
         # 1.1.15: 统计文件字数并更新数据库
         docs = final_state.get('docs', [])
@@ -264,7 +282,9 @@ async def process_url(request: Request):
         }
         
         # 执行工作流
-        final_state = await cl.make_async(workflow_app.invoke)(initial_state)
+        # 1.2.24: 移除 cl.make_async，使用 asyncio.to_thread 处理同步调用
+        import asyncio
+        final_state = await asyncio.to_thread(workflow_app.invoke, initial_state)
         
         # 1.1.12: 按照 chatmax 逻辑，检查是否有解析失败的文档
         docs = final_state.get('docs', [])
@@ -549,7 +569,8 @@ async def chat(request: Request):
         }
         
         # 执行工作流（只执行 chat 节点）
-        result = await cl.make_async(workflow_app.invoke)(state)
+        # 1.2.24: 移除 cl.make_async，直接使用异步调用
+        result = workflow_app.invoke(state)
         
         answer = result.get("answer", "抱歉，我无法回答这个问题。")
         context = result.get("context", "")
@@ -568,15 +589,148 @@ async def chat(request: Request):
             "message": str(e)
         })
 
+# 1.2.24: 新增流式聊天端点，支持 SSE 实时显示
+@fastapi_app.post("/api/chat/stream")
+async def chat_stream(request: Request):
+    """
+    1.2.24: 流式聊天 API，支持实时显示答案
+    使用 FastAPI 原生 StreamingResponse 实现 SSE
+    """
+    try:
+        data = await request.json()
+        query = data.get("query")
+        kb_token = data.get("kb_id")  # share_token 或 vector_collection
+        conversation_history = data.get("conversation_history", [])
+        user_id = data.get("user_id")  # 可选，用于权限验证
+        
+        if not query:
+            raise HTTPException(status_code=400, detail="Missing query")
+        
+        if not kb_token:
+            raise HTTPException(status_code=400, detail="Missing kb_id")
+        
+        # 1.2.24: 从 Supabase 获取 vector_collection 并验证权限（与 /api/chat 相同逻辑）
+        collection_name = None
+        kb_data = None
+        
+        if supabase:
+            try:
+                result = supabase.table("knowledge_bases")\
+                    .select("vector_collection, user_id, id")\
+                    .eq("share_token", kb_token)\
+                    .single()\
+                    .execute()
+                
+                if result.data:
+                    kb_data = result.data
+                    vector_collection = kb_data.get("vector_collection")
+                    
+                    if vector_collection and isinstance(vector_collection, str) and vector_collection.strip():
+                        collection_name = vector_collection.strip()
+                    else:
+                        if os.getenv("ENV") == "development":
+                            print(f"⚠️ vector_collection is empty for kb_id {kb_token}, using kb_token as collection_name")
+                        collection_name = kb_token
+                    
+                    # 权限验证
+                    if user_id:
+                        kb_user_id = kb_data.get("user_id")
+                        if kb_user_id != user_id:
+                            if os.getenv("ENV") == "development":
+                                print(f"⚠️ User {user_id} accessing shared knowledge base {kb_data.get('id')} via share_token")
+                    else:
+                        if os.getenv("ENV") == "development":
+                            print(f"⚠️ Accessing knowledge base via share_token without user_id (public share mode)")
+                else:
+                    if os.getenv("ENV") == "development":
+                        print(f"⚠️ Knowledge base not found by share_token, using kb_token as collection_name: {kb_token}")
+                    collection_name = kb_token
+            except Exception as e:
+                if os.getenv("ENV") == "development":
+                    print(f"⚠️ Failed to fetch knowledge base info, using kb_token as collection_name: {e}")
+                collection_name = kb_token
+        else:
+            collection_name = kb_token
+        
+        # 确保 collection_name 有效
+        if not collection_name or not isinstance(collection_name, str) or not collection_name.strip():
+            raise HTTPException(status_code=404, detail="Knowledge base not found or invalid kb_id: collection_name is empty")
+        
+        # 构建消息历史
+        messages = []
+        for msg in conversation_history:
+            if msg.get("role") == "user":
+                messages.append(HumanMessage(content=msg.get("content", "")))
+            elif msg.get("role") == "assistant":
+                messages.append(AIMessage(content=msg.get("content", "")))
+        
+        # 添加当前用户问题
+        messages.append(HumanMessage(content=query))
+        
+        # 准备状态
+        state = {
+            "messages": messages,
+            "collection_name": collection_name,
+            "file_path": "",
+            "docs": [],
+            "splits": [],
+            "context": "",
+            "answer": ""
+        }
+        
+        # 1.2.24: 定义 SSE 流式生成器
+        async def generate():
+            try:
+                # 调用流式聊天函数
+                async for chunk_data in chat_node_stream(state):
+                    if chunk_data.get("done"):
+                        # 发送完成消息，包含完整答案和上下文
+                        yield f"data: {json.dumps({'answer': chunk_data.get('answer', ''), 'context': chunk_data.get('context', ''), 'done': True})}\n\n"
+                    else:
+                        # 发送数据块
+                        chunk_text = chunk_data.get("chunk", "")
+                        if chunk_text:
+                            yield f"data: {json.dumps({'chunk': chunk_text})}\n\n"
+                
+                # 发送结束标记
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                # 错误处理
+                error_data = json.dumps({'error': str(e), 'done': True})
+                yield f"data: {error_data}\n\n"
+                if os.getenv("ENV") == "development":
+                    print(f"❌ Stream chat error: {e}")
+        
+        # 1.2.24: 返回流式响应
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # 禁用 Nginx buffering
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        if os.getenv("ENV") == "development":
+            print(f"❌ Stream chat setup error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # 1.2.0: 获取聊天配置 API
-@fastapi_app.get("/api/chat-config")
+# 1.2.21: 改为POST请求，避免Chainlit拦截GET请求
+@fastapi_app.post("/api/chat-config")
 async def get_chat_config(request: Request):
     """
     获取项目的聊天配置（欢迎语、推荐问题等）
+    1.2.21: 改为POST请求，避免Chainlit拦截GET请求
     """
     try:
-        kb_token = request.query_params.get("kb_id")
-        language = request.query_params.get("language", "zh")
+        # 1.2.21: 支持从body或query参数获取参数
+        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+        kb_token = body.get("kb_id") or request.query_params.get("kb_id")
+        language = body.get("language") or request.query_params.get("language", "zh")
         
         if not kb_token:
             return JSONResponse(status_code=400, content={
@@ -584,18 +738,20 @@ async def get_chat_config(request: Request):
                 "message": "Missing kb_id"
             })
         
-        # 从 Supabase 获取 chat_config
+        # 从 Supabase 获取 chat_config 和项目名称
         chat_config = None
+        project_name = "YUIChat"  # 默认项目名称
         if supabase:
             try:
                 result = supabase.table("knowledge_bases")\
-                    .select("chat_config")\
+                    .select("chat_config, name")\
                     .eq("share_token", kb_token)\
                     .single()\
                     .execute()
                 
                 if result.data:
                     chat_config = result.data.get("chat_config", {})
+                    project_name = result.data.get("name", "YUIChat")
             except Exception as e:
                 if os.getenv("ENV") == "development":
                     print(f"⚠️ Failed to fetch chat_config: {e}")
@@ -617,6 +773,7 @@ async def get_chat_config(request: Request):
         
         return JSONResponse(content={
             "status": "success",
+            "project_name": project_name,  # 1.2.13: 返回项目名称用于替换 Chainlit logo
             "avatar_url": chat_config.get("avatar_url", "") if chat_config else "",
             "welcome_message": welcome_message,
             "recommended_questions": recommended_questions[:3] if recommended_questions else []
@@ -917,7 +1074,9 @@ XXXにはどのような特徴がありますか？
             try:
                 if os.getenv("ENV") == "development":
                     print(f"🔍 DEBUG: Generating questions with LLM, context length: {len(context)}")
-                response = await cl.make_async(llm.invoke)(prompt.format(context=context))
+                # 1.2.24: 移除 cl.make_async，使用 asyncio.to_thread 处理同步调用
+                import asyncio
+                response = await asyncio.to_thread(llm.invoke, prompt.format(context=context))
                 generated_text = response.content.strip()
                 if os.getenv("ENV") == "development":
                     print(f"🔍 DEBUG: LLM generated text: {generated_text[:200]}...")
@@ -1119,6 +1278,11 @@ XXXにはどのような特徴がありますか？
             headers={"Content-Type": "application/json"}
         )
 
+# 1.2.24: 以下 Chainlit 相关代码已被流式 /api/chat/stream 替代
+# 保留注释以便参考原有实现
+"""
+# 1.2.23: 已替代 - 以下代码使用 Chainlit 框架实现面向用户的聊天
+# 1.2.24: 现在使用 React 前端 + /api/chat/stream 实现流式聊天
 # 1.1.0: 存储当前会话的状态
 @cl.on_chat_start
 async def start():
@@ -1193,10 +1357,12 @@ async def start():
                         
                         # 1.2.0: 发送欢迎语（带头像）
                         if avatar_url:
+                            # 1.2.24: 设置动态头像
+                            await cl.Avatar(name="Assistant", url=avatar_url).send()
                             # Chainlit支持通过author参数传递头像URL
-                            await cl.Message(content=welcome_message).send()
+                            await cl.Message(content=welcome_message, author="Assistant").send()
                         else:
-                            await cl.Message(content=welcome_message).send()
+                            await cl.Message(content=welcome_message, author="Assistant").send()
                         
                         # 1.2.0: 如果未配置推荐问题，获取高频问题
                         if not recommended_questions:
@@ -1228,7 +1394,7 @@ async def start():
                                     cl.Action(name=question, value=question, label=question)
                                 )
                             if actions:
-                                await cl.Message(content="", actions=actions).send()
+                                await cl.Message(content="", actions=actions, author="Assistant").send()
                     else:
                         # 1.2.1: 如果 vector_collection 为空，使用 kb_id 作为后备，但仍发送欢迎语
                         if os.getenv("ENV") == "development":
@@ -1236,7 +1402,7 @@ async def start():
                         collection_name = kb_id
                         # 1.2.1: 即使 vector_collection 为空，也发送默认欢迎语
                         default_welcome = "欢迎访问知识库！您可以询问与该项目相关的任何问题。"
-                        await cl.Message(content=default_welcome).send()
+                        await cl.Message(content=default_welcome, author="Assistant").send()
                 else:
                     # 1.2.1: 数据库查询返回空结果，发送默认欢迎语
                     if os.getenv("ENV") == "development":
@@ -1244,7 +1410,7 @@ async def start():
                     collection_name = kb_id
                     # 1.2.1: 即使查询失败，也发送默认欢迎语
                     default_welcome = "欢迎访问知识库！您可以询问与该项目相关的任何问题。"
-                    await cl.Message(content=default_welcome).send()
+                    await cl.Message(content=default_welcome, author="Assistant").send()
             except Exception as e:
                 # 1.2.1: 数据库查询失败，发送默认欢迎语
                 if os.getenv("ENV") == "development":
@@ -1252,7 +1418,7 @@ async def start():
                 collection_name = kb_id
                 # 1.2.1: 即使查询失败，也发送默认欢迎语
                 default_welcome = "欢迎访问知识库！您可以询问与该项目相关的任何问题。"
-                await cl.Message(content=default_welcome).send()
+                await cl.Message(content=default_welcome, author="Assistant").send()
         else:
             # 1.2.1: Supabase 客户端未初始化，使用 kb_id，发送默认欢迎语
             if os.getenv("ENV") == "development":
@@ -1260,7 +1426,7 @@ async def start():
             collection_name = kb_id
             # 1.2.1: 即使 Supabase 未初始化，也发送默认欢迎语
             default_welcome = "欢迎访问知识库！您可以询问与该项目相关的任何问题。"
-            await cl.Message(content=default_welcome).send()
+            await cl.Message(content=default_welcome, author="Assistant").send()
         
         # 1.1.15: 最终验证 - 确保 collection_name 有效（必须是非空字符串）
         if not collection_name or not isinstance(collection_name, str):
@@ -1371,7 +1537,7 @@ async def main(message: cl.Message):
         error_msg = "知识库配置错误：collection_name 无效。请重新访问知识库链接。"
         if os.getenv("ENV") == "development":
             print(f"❌ Chainlit message error: collection_name is invalid: {collection_name}")
-        await cl.Message(content=error_msg).send()
+        await cl.Message(content=error_msg, author="Assistant").send()
         return
     
     # 1.1.0: 添加用户新消息
@@ -1398,18 +1564,27 @@ async def main(message: cl.Message):
         
         cl.user_session.set("messages", messages)
         
-        await cl.Message(content=answer).send()
+        # 1.2.23: 显式设置 author 以匹配 public/avatars/assistant.png
+        await cl.Message(content=answer, author="Assistant").send()
     except ValueError as e:
         # 1.1.15: 处理 collection_name 验证错误
         error_msg = f"知识库配置错误：{str(e)}。请重新访问知识库链接。"
         if os.getenv("ENV") == "development":
             print(f"❌ Chainlit workflow error: {e}")
-        await cl.Message(content=error_msg).send()
+        await cl.Message(content=error_msg, author="Assistant").send()
     except Exception as e:
         error_msg = f"对话过程中发生错误：{str(e)}"
         if os.getenv("ENV") == "development":
             print(f"❌ Chainlit unexpected error: {e}")
-        await cl.Message(content=error_msg).send()
+        await cl.Message(content=error_msg, author="Assistant").send()
+"""  # 1.2.24: Chainlit 代码块结束
 
+# 1.2.24: 使用 uvicorn 启动 FastAPI 应用
 if __name__ == "__main__":
-    pass
+    import uvicorn
+    uvicorn.run(
+        fastapi_app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info"
+    )

@@ -29,8 +29,8 @@ pip install -r requirements.txt
 cd ..
 
 # 4. 启动服务（需要两个终端）
-# 终端 1: Python 后端 (Chainlit)
-cd backend_py && chainlit run app.py
+# 终端 1: Python 后端 (FastAPI)
+cd backend_py && python app.py
 
 # 终端 2: React 管理端
 npm run dev
@@ -53,9 +53,8 @@ cp .env.example .env.local
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key
 
-# Python 后端 & Chainlit URLs
+# Python 后端 URL
 VITE_PY_BACKEND_URL=http://localhost:8000
-VITE_CHAINLIT_URL=http://localhost:8000
 ```
 
 #### 2. 配置 Python 后端环境变量
@@ -94,11 +93,11 @@ pip install -r requirements.txt
 
 #### 4. 启动服务
 
-**终端 1 - Python 后端（Chainlit）：**
+**终端 1 - Python 后端（FastAPI）：**
 ```bash
 cd backend_py
 source venv/bin/activate  # 如果还没激活
-chainlit run app.py
+python app.py
 ```
 
 **终端 2 - React 管理端：**

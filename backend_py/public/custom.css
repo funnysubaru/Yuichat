@@ -1,18 +1,74 @@
-/* 隐藏底部 "技术支持 Chainlit" 水印 */
-a[href="https://github.com/Chainlit/chainlit"] {
-  display: none !important;
-}
+/* 1.2.25: YUIChat 自定义样式 */
+/* Chainlit 会自动使用 public/logo_dark.png 和 logo_light.png */
 
-/* 备用选择器 - 隐藏包含 Chainlit 链接的容器 */
+/* 隐藏 Chainlit 水印和链接 */
+a[href="https://github.com/Chainlit/chainlit"],
+a[href*="chainlit.io"],
 footer,
-div[class*="watermark"],
-a[href*="chainlit"] {
+div[class*="watermark"] {
   display: none !important;
 }
 
-/* 隐藏右上角的"说明"按钮 (readme) */
+/* 隐藏右上角的"说明"按钮 */
 button[id="readme-button"],
 button[aria-label*="readme"],
 button[aria-label*="说明"] {
   display: none !important;
 }
+
+/* 1.2.25: 增大头像显示尺寸 */
+/* Chainlit 2.3.0 使用 Radix UI Avatar 组件 */
+/* 需要覆盖整个组件树的尺寸限制 */
+
+/* 头像图片 - 使用高优先级选择器 */
+img.aspect-square[alt*="Avatar for"],
+img.aspect-square[src*="/avatars/"],
+img[alt="Avatar for Assistant"],
+img[alt*="Avatar for"],
+img[src*="/avatars/"] {
+  width: 56px !important;
+  height: 56px !important;
+  min-width: 56px !important;
+  min-height: 56px !important;
+  max-width: 56px !important;
+  max-height: 56px !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  aspect-ratio: 1 / 1 !important;
+}
+
+/* Radix Avatar 根容器 - 通常是 span 元素 */
+span:has(> img[alt*="Avatar for"]),
+span:has(> img[src*="/avatars/"]),
+span:has(img[alt*="Avatar for"]),
+span:has(img[src*="/avatars/"]) {
+  width: 56px !important;
+  height: 56px !important;
+  min-width: 56px !important;
+  min-height: 56px !important;
+  max-width: 56px !important;
+  max-height: 56px !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+}
+
+/* 消息中包含头像的容器 - 可能有多层嵌套 */
+div:has(> span > img[alt*="Avatar for"]),
+div:has(> span > img[src*="/avatars/"]) {
+  min-width: 56px !important;
+  width: auto !important;
+  flex-shrink: 0 !important;
+}
+
+/* 覆盖 Tailwind 的 h-full w-full 类 */
+.h-full.w-full.aspect-square[alt*="Avatar"],
+.aspect-square.h-full.w-full[src*="/avatars/"] {
+  width: 56px !important;
+  height: 56px !important;
+}
+
+/* 1.2.23: 发送按钮颜色通过 theme.json 配置 */
+/* 使用 Chainlit 官方方式：在 public/theme.json 中设置 --primary 为 YUI 紫色 */
+/* 参考: https://docs.chainlit.io/customisation/theme */

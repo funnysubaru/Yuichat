@@ -23,4 +23,5 @@ cd "$(dirname "$0")"
 export ENV=development
 
 # 启动后端并输出所有日志
-chainlit run app.py --host 0.0.0.0 --port 8000 2>&1 | tee backend.log
+# 1.2.24: 使用 uvicorn 替代 chainlit run
+python app.py 2>&1 | tee backend.log

@@ -480,6 +480,179 @@ def chat_node(state: GraphState):
     
     return {"answer": response.content, "messages": messages + [response]}
 
+# 1.2.24: 流式版本的 chat_node，用于支持 SSE 流式输出
+async def chat_node_stream(state: GraphState):
+    """
+    1.2.24: 流式版本的聊天节点，支持实时输出 AI 回复
+    与 chat_node 类似，但使用 astream 生成器返回数据块
+    """
+    messages = state.get('messages', [])
+    if not messages:
+        if os.getenv("ENV") == "development":
+            print("No messages provided, skipping chat node.")
+        yield {"answer": "", "done": True}
+        return
+        
+    collection_name = state.get('collection_name')
+    
+    # 1.2.24: 验证 collection_name，确保知识库隔离
+    if not collection_name or not isinstance(collection_name, str) or not collection_name.strip():
+        error_msg = f"collection_name must be a non-empty string, got: {type(collection_name).__name__}={collection_name}"
+        if os.getenv("ENV") == "development":
+            print(f"❌ Chat node error: {error_msg}")
+        raise ValueError(error_msg)
+    
+    # 1.2.24: 确保 collection_name 符合命名规范（防止注入攻击）
+    collection_name = collection_name.strip()
+    if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
+        error_msg = f"Invalid collection_name format: {collection_name}"
+        if os.getenv("ENV") == "development":
+            print(f"❌ Chat node error: {error_msg}")
+        raise ValueError(error_msg)
+    
+    # 获取最后一条消息（用户问题）
+    user_query = messages[-1].content
+    
+    # 1.2.24: 向量检索（与 chat_node 相同的逻辑）
+    context = ""
+    if USE_PGVECTOR and DATABASE_URL:
+        # 使用 Supabase pgvector
+        try:
+            vx = vecs.create_client(DATABASE_URL)
+            collection = vx.get_collection(name=collection_name)
+            
+            # 生成查询向量
+            embeddings_model = OpenAIEmbeddings()
+            query_vector = embeddings_model.embed_query(user_query)
+            
+            # 检索相似文档
+            results = collection.query(
+                query_vector=query_vector,
+                limit=MAX_CHUNKS,
+                include_value=False,
+                include_metadata=True
+            )
+            
+            # 提取文本并过滤错误文档
+            valid_texts = []
+            for record in results:
+                if record[2]:
+                    text = record[2].get("text", "")
+                    metadata = record[2].get("metadata", {}) if isinstance(record[2], dict) else {}
+                    
+                    is_error = (
+                        'error' in metadata or 
+                        '爬取失败' in text or 
+                        '解析失败' in text or
+                        text.strip().startswith('爬取失败') or
+                        text.strip().startswith('解析失败')
+                    )
+                    if not is_error and text.strip():
+                        valid_texts.append(text)
+            
+            context = "\n\n".join(valid_texts[:MAX_CHUNKS])
+            
+            if not context or not context.strip() or len(context.strip()) < 50:
+                if os.getenv("ENV") == "development":
+                    print("⚠️ 警告: pgvector检索后上下文为空或过短")
+            
+        except Exception as e:
+            print(f"❌ pgvector query error: {e}, falling back to Chroma")
+            # 回退到 Chroma
+            vectorstore = Chroma(
+                persist_directory=f"./chroma_db/{collection_name}",
+                embedding_function=OpenAIEmbeddings()
+            )
+            retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVE_K})
+            relevant_docs = retriever.invoke(user_query)
+            
+            valid_docs = []
+            for doc in relevant_docs:
+                is_error = (
+                    'error' in doc.metadata or 
+                    '爬取失败' in doc.page_content or 
+                    '解析失败' in doc.page_content or
+                    doc.page_content.strip().startswith('爬取失败') or
+                    doc.page_content.strip().startswith('解析失败')
+                )
+                if not is_error:
+                    valid_docs.append(doc)
+            
+            if valid_docs:
+                relevant_docs = valid_docs[:MAX_CHUNKS]
+            
+            context = "\n\n".join([doc.page_content for doc in relevant_docs])
+    else:
+        # 使用 Chroma（本地开发）
+        vectorstore = Chroma(
+            persist_directory=f"./chroma_db/{collection_name}",
+            embedding_function=OpenAIEmbeddings()
+        )
+        retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVE_K})
+        relevant_docs = retriever.invoke(user_query)
+        
+        valid_docs = []
+        for doc in relevant_docs:
+            is_error = (
+                'error' in doc.metadata or 
+                '爬取失败' in doc.page_content or 
+                '解析失败' in doc.page_content or
+                doc.page_content.strip().startswith('爬取失败') or
+                doc.page_content.strip().startswith('解析失败')
+            )
+            if not is_error:
+                valid_docs.append(doc)
+        
+        original_count = len(relevant_docs)
+        if valid_docs:
+            relevant_docs = valid_docs[:MAX_CHUNKS]
+            if os.getenv("ENV") == "development":
+                print(f"🔍 检索到 {len(valid_docs)} 个有效文档（已过滤 {original_count - len(valid_docs)} 个错误文档）")
+        else:
+            relevant_docs = relevant_docs[:MAX_CHUNKS]
+            if os.getenv("ENV") == "development":
+                print(f"⚠️ 检索到的文档可能包含错误，使用原始结果")
+        
+        context = "\n\n".join([doc.page_content for doc in relevant_docs])
+    
+    # 1.2.24: 如果上下文为空，返回友好提示
+    if not context or not context.strip() or len(context.strip()) < 50:
+        if os.getenv("ENV") == "development":
+            print("⚠️ 警告: 上下文为空或过短，可能没有找到相关文档")
+        yield {
+            "answer": "抱歉，我在知识库中没有找到与您的问题相关的信息。",
+            "done": True,
+            "context": ""
+        }
+        return
+    
+    # 1.2.24: 生成流式回答
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。如果上下文中没有相关信息，请诚实地说你不知道。 \n\n上下文:\n{context}"),
+        MessagesPlaceholder(variable_name="messages"),
+    ])
+    
+    llm = ChatOpenAI(model="gpt-4o", streaming=True)
+    chain = prompt | llm
+    
+    # 1.2.24: 使用 astream 进行流式输出
+    full_response = ""
+    async for chunk in chain.astream({"context": context, "messages": messages}):
+        if chunk.content:
+            full_response += chunk.content
+            # 发送数据块
+            yield {
+                "chunk": chunk.content,
+                "done": False
+            }
+    
+    # 1.2.24: 发送完成标记，包含完整答案和上下文
+    yield {
+        "answer": full_response,
+        "context": context,
+        "done": True
+    }
+
 # 1.1.11: 入口节点 - 根据输入类型路由到不同处理节点
 def entry_node(state: GraphState):
     """1.1.11: 入口节点，不做任何处理，仅用于路由"""

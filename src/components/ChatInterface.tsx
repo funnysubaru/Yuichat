@@ -794,7 +794,8 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
         });
       }
       
-      const response = await fetch(`${PY_BACKEND_URL}/api/chat`, {
+      // 1.2.24: 使用流式端点实现实时显示
+      const response = await fetch(`${PY_BACKEND_URL}/api/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -806,27 +807,84 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Backend error');
+        throw new Error(`Stream request failed: ${response.status}`);
       }
       
-      const data = await response.json();
-      
-      if (data.status === 'error') {
-        throw new Error(data.message);
+      if (!response.body) {
+        throw new Error('Response body is null');
       }
       
-      // 1.1.10: 更新消息内容
-      updateMessage(assistantMessageId, {
-        content: data.answer || '抱歉，我无法回答这个问题。',
-        status: 'completed',
-        citations: data.citations || [],
-      });
-
+      // 1.2.24: 解析 SSE 流式响应
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullContext = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          // 流结束，更新消息状态
+          updateMessage(assistantMessageId, {
+            status: 'completed',
+          });
+          break;
+        }
+        
+        // 解码数据
+        buffer += decoder.decode(value, { stream: true });
+        
+        // 解析 SSE 格式: data: {json}\n\n
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 保留不完整的行
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6); // 去掉 "data: " 前缀
+            
+            if (data === '[DONE]') {
+              updateMessage(assistantMessageId, {
+                status: 'completed',
+              });
+              if (import.meta.env.DEV) {
+                logger.log('Stream completed');
+              }
+              break;
+            }
+            
+            try {
+              const parsed = JSON.parse(data);
+              
+              if (parsed.error) {
+                throw new Error(parsed.error);
+              }
+              
+              if (parsed.chunk) {
+                // 1.2.24: 流式追加内容
+                appendToMessage(assistantMessageId, parsed.chunk);
+              }
+              
+              if (parsed.done && parsed.answer) {
+                // 收到完整答案，保存上下文
+                fullContext = parsed.context || '';
+                if (import.meta.env.DEV) {
+                  logger.log('Received full answer with context');
+                }
+              }
+            } catch (e) {
+              // JSON 解析错误，忽略
+              if (import.meta.env.DEV) {
+                logger.warn('Failed to parse SSE data:', data);
+              }
+            }
+          }
+        }
+      }
+      
       // 1.2.15: 标题更新逻辑已移至 autoSaveMessage，这里不再需要
       
       if (import.meta.env.DEV) {
-        logger.log('Chat response:', data);
+        logger.log('Stream chat completed');
       }
     } catch (error) {
       logger.error('Error sending message:', error);

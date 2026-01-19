@@ -1,5 +1,74 @@
 # Changelog
 
+## 1.2.24 (2026-01-19)
+
+### 架构重构
+
+- 🔄 **完全替代 Chainlit，使用 FastAPI + SSE 流式输出**：
+  - 移除 Chainlit 框架依赖，创建独立的 FastAPI 应用
+  - 使用 React 前端 + `/api/chat/stream` 端点实现面向用户的聊天功能
+  - 实现 Server-Sent Events (SSE) 协议支持流式输出
+  - 保留 `/api/chat` 非流式端点以确保向后兼容
+
+### 后端改进
+
+- ⚡ **流式输出支持**：
+  - 在 `workflow.py` 中添加 `chat_node_stream` 函数，支持异步流式生成答案
+  - 使用 LangChain 的 `astream` 方法实现实时文本流
+  - 实现 SSE 数据格式：`data: {json}\n\n`
+
+- 🔧 **FastAPI 应用重构**：
+  - 创建独立的 FastAPI 应用实例，移除 `chainlit.server.app` 依赖
+  - 添加 CORS 中间件支持跨域访问
+  - 新增 `/api/chat/stream` 端点，使用 `StreamingResponse` 实现 SSE
+  - 使用 `asyncio.to_thread` 替代 `cl.make_async` 处理同步调用
+  - 添加 uvicorn 启动代码，支持 `python app.py` 直接启动
+
+- 📝 **代码保留与注释**：
+  - 注释掉 Chainlit 相关代码（`@cl.on_chat_start` 和 `@cl.on_message`）
+  - 添加版本标记（1.2.24）说明代码变更原因
+  - 保留原有代码作为参考，遵循代码修改规范
+
+### 前端改进
+
+- ⚡ **流式显示支持**：
+  - 更新 `ChatInterface.tsx` 的 `handleSend` 函数支持 SSE 流式显示
+  - 使用 `fetch` + `ReadableStream` 解析 SSE 数据流
+  - 实时追加消息内容，提升用户体验
+  - 支持错误处理和连接中断处理
+
+### 依赖更新
+
+- 📦 **移除 Chainlit 依赖**：
+  - 在 `requirements.txt` 中移除 `chainlit` 依赖
+  - 添加 `uvicorn` 作为 FastAPI 服务器
+  - 简化依赖树，减少项目复杂度
+
+### 文档和脚本更新
+
+- 📚 **更新启动文档**：
+  - 修改 `QUICK_START_GUIDE.md`，更新启动命令从 `chainlit run app.py` 改为 `python app.py`
+  - 更新环境变量说明，移除 `VITE_CHAINLIT_URL`
+  - 更新访问地址说明（从 "Chainlit" 改为 "API 端点"）
+
+- 🔧 **更新启动脚本**：
+  - 修改 `monitor_backend.sh` 使用 `python app.py` 启动
+  - 更新 `setup.sh` 和 `setup.bat` 中的启动命令
+  - 保持脚本的向后兼容性
+
+### 技术细节
+
+- **SSE 数据格式**：
+  - 数据块：`data: {"chunk": "文本内容"}\n\n`
+  - 完成标记：`data: {"done": true, "answer": "完整答案", "context": "上下文"}\n\n`
+  - 结束标记：`data: [DONE]\n\n`
+  - 错误处理：`data: {"error": "错误信息", "done": true}\n\n`
+
+- **向后兼容**：
+  - 保留 `/api/chat` 非流式端点
+  - 前端可根据需要选择流式或非流式方式
+  - 所有现有 API 端点保持不变
+
 ## 1.2.23 (2026-01-19)
 
 ### 功能改进

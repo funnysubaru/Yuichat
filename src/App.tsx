@@ -31,7 +31,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(true); // 1.1.5: 添加加载状态
 
   // Check if current route should show sidebar and top nav
-  const showLayout = !location.pathname.startsWith('/share');
+  // 1.2.6: 外部分享管理页面显示侧边栏，只有公开分享链接（带参数）不显示
+  const showLayout = !(location.pathname.startsWith('/share/') && location.pathname !== '/share');
 
   useEffect(() => {
     // Load initial user
@@ -70,7 +71,9 @@ function App() {
   }
 
   // 1.1.5: 如果用户未登录且不是分享页面，显示认证页面
-  if (!user && isSupabaseAvailable && !location.pathname.startsWith('/share') && !location.pathname.startsWith('/auth')) {
+  // 1.2.6: 只有公开分享链接（带参数）不需要登录，管理页面需要登录
+  const isPublicShareLink = location.pathname.startsWith('/share/') && location.pathname !== '/share';
+  if (!user && isSupabaseAvailable && !isPublicShareLink && !location.pathname.startsWith('/auth')) {
     return <AuthPage />;
   }
 
