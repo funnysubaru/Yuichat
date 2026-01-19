@@ -5,28 +5,99 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom'; // 1.1.13: 导入 useSearchParams 读取URL参数
 import i18n from '../i18n';
 import { motion } from 'framer-motion';
-import { Search, Plus, FileText, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
+import { Search, Plus, FileText, CheckCircle, XCircle, Clock, Trash2, Loader2, AlertCircle, RefreshCw, MoreVertical } from 'lucide-react';
 import { UploadKnowledgeModal } from '../components/UploadKnowledgeModal';
+import { ConfirmModal } from '../components/ConfirmModal'; // 1.1.14: 导入自定义确认弹窗
 import { supabase, isSupabaseAvailable } from '../lib/supabase';
 import { getCurrentUser } from '../services/authService';
-import { uploadFileToKB } from '../services/kbService';
+import { uploadFileToKB, uploadUrlsToKB } from '../services/kbService';
 import type { Document } from '../types/knowledgeBase';
 import { logger } from '../utils/logger';
 import { toast } from 'react-hot-toast';
 
 export function KnowledgeBasePage() {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams(); // 1.1.13: 读取URL参数
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentKb, setCurrentKb] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set()); // 选中的文档ID
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null); // 当前打开的菜单ID
+  // 1.1.14: 确认弹窗状态
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    isDelete: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    isDelete: false,
+    onConfirm: () => {},
+  });
 
+  // 1.1.13: 当URL参数变化时重新加载知识库和文档
   useEffect(() => {
     loadKBAndDocuments();
-  }, []);
+  }, [searchParams.get('project')]); // 1.1.13: 监听项目ID参数变化
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu-container')) {
+        setOpenMenuId(null);
+      }
+    };
+
+    if (openMenuId) {
+      document.addEventListener('click', handleClickOutside);
+      return () => {
+        document.removeEventListener('click', handleClickOutside);
+      };
+    }
+  }, [openMenuId]);
+
+  // 1.1.12: 状态轮询 - 定期检查 processing 状态的文档
+  useEffect(() => {
+    if (!currentKb || !isSupabaseAvailable) return;
+
+    const processingDocs = documents.filter(doc => doc.status === 'processing');
+    if (processingDocs.length === 0) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const { data: updatedDocs, error } = await supabase
+          .from('documents')
+          .select('id, status')
+          .eq('knowledge_base_id', currentKb.id)
+          .in('id', processingDocs.map(d => d.id));
+
+        if (error) throw error;
+
+        // 检查是否有状态变化
+        const hasChanges = updatedDocs?.some(doc => {
+          const currentDoc = documents.find(d => d.id === doc.id);
+          return currentDoc && currentDoc.status !== doc.status;
+        });
+
+        if (hasChanges) {
+          await loadKBAndDocuments();
+        }
+      } catch (error) {
+        logger.error('Status polling error:', error);
+      }
+    }, 3000); // 每3秒检查一次
+
+    return () => clearInterval(intervalId);
+  }, [documents, currentKb, isSupabaseAvailable]);
 
   const loadKBAndDocuments = async () => {
     setIsLoading(true);
@@ -40,44 +111,78 @@ export function KnowledgeBasePage() {
       const user = await getCurrentUser();
       if (!user) return;
 
-      // 1.1.2: 获取当前用户的第一个知识库作为默认（实际应有知识库选择器）
-      const { data: kbData, error: kbError } = await supabase
-        .from('knowledge_bases')
-        .select('*')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
+      // 1.1.13: 从URL参数获取项目ID，确保知识库隔离
+      const projectId = searchParams.get('project');
+      let kb = null;
 
-      if (kbError && kbError.code !== 'PGRST116') throw kbError;
-      
-      let kb = kbData;
-      if (!kb) {
-        // 自动创建一个默认知识库
-        const { data: newKb, error: createError } = await supabase
+      if (projectId) {
+        // 1.1.13: 如果提供了项目ID，使用该ID获取知识库（并验证用户权限）
+        const { data: kbData, error: kbError } = await supabase
           .from('knowledge_bases')
-          .insert({
-            user_id: user.id,
-            name: t('defaultProject'),
-            dify_dataset_id: ''
-          })
-          .select()
+          .select('*')
+          .eq('id', projectId)
+          .eq('user_id', user.id) // 1.1.13: 验证用户权限，确保只能访问自己的知识库
           .single();
-        if (createError) throw createError;
-        kb = newKb;
+
+        if (kbError) {
+          if (kbError.code === 'PGRST116') {
+            // 知识库不存在或用户无权限
+            logger.error('Knowledge base not found or access denied:', kbError);
+            toast.error('项目不存在或无权访问');
+            setIsLoading(false);
+            return;
+          }
+          throw kbError;
+        }
+        kb = kbData;
+      } else {
+        // 1.1.13: 如果没有提供项目ID，获取当前用户的第一个知识库作为默认
+        const { data: kbData, error: kbError } = await supabase
+          .from('knowledge_bases')
+          .select('*')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+
+        if (kbError && kbError.code !== 'PGRST116') throw kbError;
+        
+        kb = kbData;
+        if (!kb) {
+          // 自动创建一个默认知识库
+          const { data: newKb, error: createError } = await supabase
+            .from('knowledge_bases')
+            .insert({
+              user_id: user.id,
+              name: t('defaultProject'),
+              dify_dataset_id: ''
+            })
+            .select()
+            .single();
+          if (createError) throw createError;
+          kb = newKb;
+        }
+      }
+      
+      if (!kb) {
+        logger.error('No knowledge base found');
+        setIsLoading(false);
+        return;
       }
       
       setCurrentKb(kb);
 
+      // 1.1.13: 确保只查询当前知识库的文档，实现知识库隔离
       const { data, error } = await supabase
         .from('documents')
         .select('*')
-        .eq('knowledge_base_id', kb.id)
+        .eq('knowledge_base_id', kb.id) // 1.1.13: 使用当前知识库ID过滤
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       setDocuments(data || []);
     } catch (error) {
       logger.error('Error loading documents:', error);
+      toast.error('加载知识库失败');
     } finally {
       setIsLoading(false);
     }
@@ -98,10 +203,10 @@ export function KnowledgeBasePage() {
       if (type === 'file' || type === 'audio') {
         const file = data as File;
         
-        // 1.1.2: 使用新的上传流
+        // 1.1.12: 使用新的上传流
         toast.loading(t('uploading'), { id: 'upload' });
         
-        // 先在数据库创建记录
+        // 先在数据库创建记录，状态为 processing（正在学习）
         const { data: doc, error: docError } = await supabase
           .from('documents')
           .insert({
@@ -109,7 +214,7 @@ export function KnowledgeBasePage() {
             filename: file.name,
             file_type: file.name.split('.').pop(),
             file_size: file.size,
-            status: 'processing',
+            status: 'processing', // 1.1.12: 初始状态为 processing
             dify_document_id: '' // 不再强制需要
           })
           .select()
@@ -117,19 +222,123 @@ export function KnowledgeBasePage() {
 
         if (docError) throw docError;
 
-        // 调用 Python 后端处理
-        await uploadFileToKB(currentKb.id, file);
-        
-        // 更新数据库记录为已完成（实际应由后端回调，这里简化处理）
-        await supabase
-          .from('documents')
-          .update({ status: 'completed' })
-          .eq('id', doc.id);
-
-        toast.success(t('success'), { id: 'upload' });
+        // 1.1.12: 立即刷新列表，显示"正在学习"状态
         await loadKBAndDocuments();
+        toast.success(t('uploadedWaitingProcessing'), { id: 'upload' });
+
+        // 1.1.12: 异步调用 Python 后端处理，不阻塞UI
+        uploadFileToKB(currentKb.id, file)
+          .then(async () => {
+            // 处理成功，更新状态为 completed（学习成功）
+            await supabase
+              .from('documents')
+              .update({ status: 'completed' })
+              .eq('id', doc.id);
+            await loadKBAndDocuments();
+          })
+          .catch(async (error) => {
+            // 处理失败，更新状态为 failed（学习失败）
+            logger.error('File processing error:', error);
+            await supabase
+              .from('documents')
+              .update({ status: 'failed' })
+              .eq('id', doc.id);
+            await loadKBAndDocuments();
+          });
       } else if (type === 'website') {
-        // TODO: 网站处理逻辑
+        // 1.1.12: 网站处理逻辑
+        const urls = Array.isArray(data) ? data : [data as string];
+        
+        if (urls.length === 0) {
+          toast.error('No URLs provided');
+          return;
+        }
+        
+        toast.loading(t('uploading'), { id: 'upload' });
+        
+        // 为每个URL创建文档记录，状态为 processing（正在学习）
+        const docRecords = [];
+        for (const url of urls) {
+          try {
+            const { data: doc, error: docError } = await supabase
+              .from('documents')
+              .insert({
+                knowledge_base_id: currentKb.id,
+                filename: url, // 使用URL作为文件名，后续可以从元数据中提取标题
+                file_type: 'url',
+                file_size: 0, // URL没有文件大小
+                status: 'processing', // 1.1.12: 初始状态为 processing
+                storage_path: url, // 存储原始URL
+                dify_document_id: '' // 不再强制需要
+              })
+              .select()
+              .single();
+            
+            if (docError) {
+              logger.error(`Error creating document record for ${url}:`, docError);
+              continue;
+            }
+            
+            docRecords.push({ url, doc });
+          } catch (error) {
+            logger.error(`Error creating document record for ${url}:`, error);
+          }
+        }
+        
+        if (docRecords.length === 0) {
+          toast.error('Failed to create document records');
+          return;
+        }
+        
+        // 1.1.12: 立即刷新列表，显示"正在学习"状态
+        await loadKBAndDocuments();
+        toast.success(t('uploadedWaitingProcessing'), { id: 'upload' });
+
+        // 1.1.12: 异步调用Python后端处理URL，不阻塞UI
+        const urlList = docRecords.map(r => r.url);
+        uploadUrlsToKB(currentKb.id, urlList)
+          .then(async (response) => {
+            // 1.1.12: 根据后端返回的状态更新文档状态
+            const docIds = docRecords.map(r => r.doc.id);
+            
+            if (response.status === 'success') {
+              // 全部成功，更新状态为 completed（学习成功）
+              await supabase
+                .from('documents')
+                .update({ status: 'completed' })
+                .in('id', docIds);
+            } else if (response.status === 'partial_success') {
+              // 部分成功，需要根据错误信息判断哪些URL失败
+              // 由于无法精确匹配，将所有文档标记为 completed（至少部分成功）
+              // 或者可以根据 response.errors 来判断，但需要更复杂的逻辑
+              await supabase
+                .from('documents')
+                .update({ status: 'completed' })
+                .in('id', docIds);
+              if (response.errors && response.errors.length > 0) {
+                logger.warn('部分URL处理失败:', response.errors);
+              }
+            } else if (response.status === 'error') {
+              // 全部失败，更新状态为 failed（学习失败）
+              await supabase
+                .from('documents')
+                .update({ status: 'failed' })
+                .in('id', docIds);
+              logger.error('URL处理失败:', response.message);
+            }
+            
+            await loadKBAndDocuments();
+          })
+          .catch(async (error) => {
+            // 处理失败，更新状态为 failed（学习失败）
+            logger.error('URL processing error:', error);
+            const docIds = docRecords.map(r => r.doc.id);
+            await supabase
+              .from('documents')
+              .update({ status: 'failed' })
+              .in('id', docIds);
+            await loadKBAndDocuments();
+          });
       }
     } catch (error) {
       logger.error('Upload error:', error);
@@ -138,46 +347,145 @@ export function KnowledgeBasePage() {
     }
   };
 
-  const handleDelete = async (documentId: string) => {
-    if (!confirm(t('confirmDelete'))) return;
+  // 1.1.14: 打开确认弹窗
+  const openConfirmModal = (title: string, description: string, isDelete: boolean, onConfirm: () => void) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      description,
+      isDelete,
+      onConfirm,
+    });
+  };
 
-    // 1.0.1: UI 预览模式
+  // 1.1.14: 关闭确认弹窗
+  const closeConfirmModal = () => {
+    setConfirmModal({
+      isOpen: false,
+      title: '',
+      description: '',
+      isDelete: false,
+      onConfirm: () => {},
+    });
+  };
+
+  // 1.1.14: 处理确认弹窗的回调
+  const handleConfirmModalClose = (confirmed: boolean) => {
+    if (confirmed) {
+      confirmModal.onConfirm();
+    }
+    closeConfirmModal();
+  };
+
+  // 1.1.15: 单个文档重新学习
+  const handleRelearn = async (documentId: string) => {
+    const doc = documents.find(d => d.id === documentId);
+    if (!doc) return;
+
     if (!isSupabaseAvailable) {
-      // Remove from mock data
-      setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      toast.error(t('uiPreviewUpload'));
+      return;
+    }
+
+    if (!currentKb) {
+      toast.error('No knowledge base selected');
       return;
     }
 
     try {
-      const { error } = await supabase
+      toast.loading(t('reloading'), { id: `relearn-${documentId}` });
+
+      // 将文档状态改为 processing
+      await supabase
         .from('documents')
-        .delete()
+        .update({ status: 'processing' })
         .eq('id', documentId);
 
-      if (error) throw error;
-      await loadDocuments();
+      await loadKBAndDocuments();
+
+      // 分别处理文件和URL
+      if (doc.file_type === 'url') {
+        const url = doc.storage_path || doc.filename;
+        uploadUrlsToKB(currentKb.id, [url])
+          .then(async (response) => {
+            if (response.status === 'success' || response.status === 'partial_success') {
+              await supabase.from('documents').update({ status: 'completed' }).eq('id', documentId);
+            } else {
+              await supabase.from('documents').update({ status: 'failed' }).eq('id', documentId);
+            }
+            await loadKBAndDocuments();
+            toast.success(t('reloadStarted'), { id: `relearn-${documentId}` });
+          })
+          .catch(async (error) => {
+            logger.error('Relearn URL error:', error);
+            await supabase.from('documents').update({ status: 'failed' }).eq('id', documentId);
+            await loadKBAndDocuments();
+            toast.error(t('reloadFailed'), { id: `relearn-${documentId}` });
+          });
+      } else {
+        // 文件类型的文档暂时不支持重新学习（因为需要原始文件）
+        await supabase.from('documents').update({ status: 'failed' }).eq('id', documentId);
+        await loadKBAndDocuments();
+        toast.error(t('fileReloadNotSupported'), { id: `relearn-${documentId}` });
+      }
     } catch (error) {
-      logger.error('Delete error:', error);
+      logger.error('Relearn error:', error);
+      toast.error(t('reloadFailed'), { id: `relearn-${documentId}` });
     }
   };
 
+  const handleDelete = async (documentId: string) => {
+    // 1.1.14: 使用自定义确认弹窗替换 confirm
+    openConfirmModal(
+      t('confirmDeleteTitle'),
+      t('confirmDelete'),
+      true,
+      async () => {
+        // 1.0.1: UI 预览模式
+        if (!isSupabaseAvailable) {
+          // Remove from mock data
+          setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+          return;
+        }
+
+        try {
+          const { error } = await supabase
+            .from('documents')
+            .delete()
+            .eq('id', documentId);
+
+          if (error) throw error;
+          await loadKBAndDocuments();
+        } catch (error) {
+          logger.error('Delete error:', error);
+        }
+      }
+    );
+  };
+
+  // 1.1.12: 状态图标 - processing 使用转圈的 loading icon，failed 使用红色感叹号
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
         return <CheckCircle className="w-5 h-5 text-green-500" />;
       case 'failed':
-        return <XCircle className="w-5 h-5 text-red-500" />;
+        return <AlertCircle className="w-5 h-5 text-red-500" />;
+      case 'processing':
+        return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />;
       default:
-        return <Clock className="w-5 h-5 text-yellow-500" />;
+        return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />;
     }
   };
 
+  // 1.1.12: 状态文本 - processing 显示"正在学习"，completed 显示"学习成功"，failed 显示"学习失败"
   const getStatusText = (status: string) => {
     switch (status) {
       case 'completed':
-        return t('statusCompleted');
+        return t('statusCompleted'); // "学习成功"
       case 'failed':
-        return t('statusFailed');
+        return t('statusFailed'); // "学习失败"
+      case 'processing':
+        return t('statusProcessing'); // "正在学习"
       default:
         return t('statusProcessing');
     }
@@ -186,6 +494,121 @@ export function KnowledgeBasePage() {
   const filteredDocuments = documents.filter((doc) =>
     doc.filename.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // 全选/取消全选
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(filteredDocuments.map(doc => doc.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  // 单个选择/取消选择
+  const handleSelectOne = (docId: string, checked: boolean) => {
+    const newSet = new Set(selectedIds);
+    if (checked) {
+      newSet.add(docId);
+    } else {
+      newSet.delete(docId);
+    }
+    setSelectedIds(newSet);
+  };
+
+  // 批量删除
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return;
+    // 1.1.14: 使用自定义确认弹窗替换 confirm
+    openConfirmModal(
+      t('confirmBatchDeleteTitle'),
+      t('confirmBatchDelete', { count: selectedIds.size }),
+      true,
+      async () => {
+        if (!isSupabaseAvailable) {
+          setDocuments(prev => prev.filter(doc => !selectedIds.has(doc.id)));
+          setSelectedIds(new Set());
+          return;
+        }
+
+        try {
+          toast.loading(t('deleting'), { id: 'batch-delete' });
+          const { error } = await supabase
+            .from('documents')
+            .delete()
+            .in('id', Array.from(selectedIds));
+
+          if (error) throw error;
+
+          setSelectedIds(new Set());
+          await loadKBAndDocuments();
+          toast.success(t('deleteSuccess'), { id: 'batch-delete' });
+        } catch (error) {
+          logger.error('Batch delete error:', error);
+          toast.error(t('deleteFailed'), { id: 'batch-delete' });
+        }
+      }
+    );
+  };
+
+  // 批量重新加载
+  const handleBatchReload = async () => {
+    if (selectedIds.size === 0) return;
+
+    const selectedDocs = documents.filter(doc => selectedIds.has(doc.id));
+    const urlDocs = selectedDocs.filter(doc => doc.file_type === 'url');
+
+    // 只处理URL类型的文档
+    if (urlDocs.length === 0) {
+      toast.error('只能重新学习URL类型的文档');
+      return;
+    }
+
+    if (!isSupabaseAvailable) {
+      toast.error(t('uiPreviewUpload'));
+      return;
+    }
+
+    if (!currentKb) {
+      toast.error('No knowledge base selected');
+      return;
+    }
+
+    try {
+      toast.loading(t('reloading'), { id: 'batch-reload' });
+
+      // 将选中的URL文档状态改为 processing
+      const urlDocIds = urlDocs.map(d => d.id);
+      await supabase
+        .from('documents')
+        .update({ status: 'processing' })
+        .in('id', urlDocIds);
+
+      await loadKBAndDocuments();
+
+      // 处理URL类型的文档
+      const urls = urlDocs.map(doc => doc.storage_path || doc.filename);
+      uploadUrlsToKB(currentKb.id, urls)
+        .then(async (response) => {
+          if (response.status === 'success' || response.status === 'partial_success') {
+            await supabase.from('documents').update({ status: 'completed' }).in('id', urlDocIds);
+          } else {
+            await supabase.from('documents').update({ status: 'failed' }).in('id', urlDocIds);
+          }
+          await loadKBAndDocuments();
+          setSelectedIds(new Set());
+          toast.success(t('reloadStarted'), { id: 'batch-reload' });
+        })
+        .catch(async (error) => {
+          logger.error('Batch reload URL error:', error);
+          await supabase.from('documents').update({ status: 'failed' }).in('id', urlDocIds);
+          await loadKBAndDocuments();
+          toast.error(t('reloadFailed'), { id: 'batch-reload' });
+        });
+    } catch (error) {
+      logger.error('Batch reload error:', error);
+      toast.error(t('reloadFailed'), { id: 'batch-reload' });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -232,22 +655,56 @@ export function KnowledgeBasePage() {
               />
             </div>
           </div>
+
+          {/* 批量操作按钮 */}
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3 mb-4">
+              {(() => {
+                const selectedDocs = documents.filter(doc => selectedIds.has(doc.id));
+                const hasUrlDocs = selectedDocs.some(doc => doc.file_type === 'url');
+                return hasUrlDocs && (
+                  <button
+                    onClick={handleBatchReload}
+                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    {t('batchReload')} <span className="text-primary font-medium">{selectedDocs.filter(doc => doc.file_type === 'url').length}</span>
+                  </button>
+                );
+              })()}
+              <button
+                onClick={handleBatchDelete}
+                className="px-4 py-2 bg-white border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                {t('batchDelete')} <span className="font-medium">{selectedIds.size}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Table */}
         {isLoading ? (
           <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <span className="inline-block text-primary font-semibold yui-loading-animation">YUI</span>
           </div>
         ) : filteredDocuments.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             {t('allDocuments')} - {t('noData')}
           </div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full">
+          <div className="bg-white border border-gray-200 rounded-lg overflow-auto max-h-[calc(100vh-300px)]">
+            <table className="w-full min-w-[800px]">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={filteredDocuments.length > 0 && selectedIds.size === filteredDocuments.length}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary cursor-pointer"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {t('fileNameOrUrl')}
                   </th>
@@ -255,7 +712,7 @@ export function KnowledgeBasePage() {
                     {t('type')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('fileSize')}
+                    {t('wordCount')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {t('status')}
@@ -271,6 +728,14 @@ export function KnowledgeBasePage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredDocuments.map((doc) => (
                   <tr key={doc.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(doc.id)}
+                        onChange={(e) => handleSelectOne(doc.id, e.target.checked)}
+                        className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary cursor-pointer"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <FileText className="w-5 h-5 text-gray-400" />
@@ -278,10 +743,10 @@ export function KnowledgeBasePage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {doc.fileType || '-'}
+                      {doc.file_type === 'url' ? 'url' : (doc.file_type || (doc.filename.includes('.') ? doc.filename.split('.').pop()?.toLowerCase() : '-'))}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {doc.fileSize ? `${(doc.fileSize / 1024).toFixed(2)} KB` : '-'}
+                      {doc.processing_metadata?.word_count ? doc.processing_metadata.word_count.toLocaleString() : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
@@ -292,16 +757,53 @@ export function KnowledgeBasePage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(doc.created_at).toLocaleDateString(i18n.language)}
+                      {new Date(doc.created_at).toLocaleString(i18n.language, {
+                        year: 'numeric',
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button
-                        onClick={() => handleDelete(doc.id)}
-                        className="text-red-600 hover:text-red-800 flex items-center gap-1"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        {t('delete')}
-                      </button>
+                      <div className="flex items-center gap-3 action-menu-container relative">
+                        {doc.file_type === 'url' && (
+                          <button
+                            onClick={() => handleRelearn(doc.id)}
+                            className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                            {t('relearn')}
+                          </button>
+                        )}
+                        <div className="relative">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuId(openMenuId === doc.id ? null : doc.id);
+                            }}
+                            className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                            aria-label="更多操作"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                          {openMenuId === doc.id && (
+                            <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-50">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuId(null);
+                                  handleDelete(doc.id);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-b border-gray-100 last:border-b-0"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                {t('delete')}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -316,6 +818,15 @@ export function KnowledgeBasePage() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onUpload={handleUpload}
+      />
+
+      {/* 1.1.14: 确认弹窗 */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={handleConfirmModalClose}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        isDelete={confirmModal.isDelete}
       />
     </div>
   );

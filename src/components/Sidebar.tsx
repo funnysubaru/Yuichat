@@ -4,8 +4,8 @@
  * 1.1.5: 修复登出功能
  */
 
-import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'; // 1.1.14: 导入 useSearchParams
 // 1.0.1: 删除未使用的图标导入（技能中心、创作中心、权益、API）
 import {
   BookOpen,
@@ -21,9 +21,11 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getCurrentUser, signOut, onAuthStateChange } from '../services/authService';
-import { isSupabaseAvailable } from '../lib/supabase';
+import { isSupabaseAvailable, supabase } from '../lib/supabase';
+import { listKnowledgeBases } from '../services/kbService'; // 1.1.14: 导入项目列表服务
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { logger } from '../utils/logger';
+import type { KnowledgeBase } from '../types/knowledgeBase';
 
 interface SidebarProps {
   isCollapsed?: boolean;
@@ -34,32 +36,93 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [currentProject, setCurrentProject] = useState('');
-  
-  // 1.0.2: 初始化项目名称
-  useEffect(() => {
-    setCurrentProject(t('defaultProject'));
-  }, [t]);
+  const [searchParams] = useSearchParams(); // 1.1.14: 读取URL参数
+  const [currentProject, setCurrentProject] = useState<KnowledgeBase | null>(null);
+  const [projects, setProjects] = useState<KnowledgeBase[]>([]); // 1.1.14: 项目列表
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const menuRef = useRef<HTMLDivElement>(null); // 1.1.14: 用于点击外部关闭菜单
 
+  // 1.1.14: 加载用户和项目列表
   useEffect(() => {
     const loadUser = async () => {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
+      
+      // 1.1.14: 加载项目列表
+      if (currentUser && isSupabaseAvailable) {
+        try {
+          const projectList = await listKnowledgeBases(currentUser.id);
+          setProjects(projectList);
+        } catch (error) {
+          logger.error('Error loading projects:', error);
+        }
+      }
     };
     loadUser();
 
     // 1.1.5: 监听认证状态变化
     const { unsubscribe } = onAuthStateChange((currentUser) => {
       setUser(currentUser);
+      if (currentUser && isSupabaseAvailable) {
+        listKnowledgeBases(currentUser.id).then(setProjects).catch(err => logger.error('Error loading projects:', err));
+      }
     });
 
     return () => {
       unsubscribe();
     };
   }, []);
+  
+  // 1.1.14: 从URL参数加载当前项目
+  useEffect(() => {
+    const projectId = searchParams.get('project');
+    if (projectId && projects.length > 0) {
+      const project = projects.find(p => p.id === projectId);
+      if (project) {
+        setCurrentProject(project);
+      }
+    } else if (projects.length > 0 && !currentProject) {
+      // 如果没有项目ID参数，使用第一个项目
+      setCurrentProject(projects[0]);
+    }
+  }, [searchParams.get('project'), projects]);
+  
+  // 1.1.14: 点击外部关闭项目菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowProjectMenu(false);
+      }
+    };
+    
+    if (showProjectMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showProjectMenu]);
 
+  // 1.1.14: 获取带项目ID的路径
+  const getPathWithProject = (path: string) => {
+    const projectId = searchParams.get('project') || currentProject?.id;
+    if (projectId && path !== '/') {
+      return `${path}?project=${projectId}`;
+    }
+    return path;
+  };
+  
+  // 1.2.3: 处理菜单项点击，如果是测试对话且已在当前页面，强制刷新
+  const handleMenuItemClick = (item: typeof projectMenuItems[0]) => {
+    const targetPath = getPathWithProject(item.path);
+    // 如果是测试对话，且当前已经在 /chat 页面，添加时间戳参数强制刷新
+    if (item.path === '/chat' && location.pathname === '/chat') {
+      const separator = targetPath.includes('?') ? '&' : '?';
+      navigate(`${targetPath}${separator}_refresh=${Date.now()}`);
+    } else {
+      navigate(targetPath);
+    }
+  };
+  
   // 1.0.2: 所有菜单项使用多语言
   const projectMenuItems = [
     { icon: BookOpen, label: t('knowledgeBase'), path: '/knowledge-base', id: 'knowledge-base' },
@@ -68,6 +131,13 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
     { icon: Share2, label: t('externalShare'), path: '/share', id: 'share' },
     { icon: BarChart3, label: t('dashboard'), path: '/dashboard', id: 'dashboard' },
   ];
+  
+  // 1.1.14: 切换项目
+  const handleProjectChange = (projectId: string) => {
+    setShowProjectMenu(false);
+    const currentPath = location.pathname;
+    navigate(`${currentPath}?project=${projectId}`);
+  };
 
   // 1.0.1: 删除技能中心、创作中心、权益、API 菜单项
   // 1.0.2: 使用多语言
@@ -114,20 +184,38 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
       }`}
     >
       {/* Logo */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-white" />
+      {/* 1.2.5: 使用自定义 logo SVG，包含图标和文字，放大尺寸 */}
+      <div className="py-4 border-b border-gray-200">
+        {/* 1.2.5: 使用SVG logo，增大高度以匹配之前的大小，靠左对齐，容器宽度自适应 */}
+        <div className="h-14 flex items-center w-fit ml-4">
+          <img 
+            src="/logo.svg" 
+            alt="YUIChat Logo" 
+            className="h-full w-auto object-contain"
+            onError={(e) => {
+              // 如果SVG加载失败，尝试PNG
+              const target = e.target as HTMLImageElement;
+              if (target.src.endsWith('.svg')) {
+                target.src = '/logo.png';
+              } else {
+                // 如果都失败，回退到默认图标
+                target.style.display = 'none';
+                const fallback = target.nextElementSibling as HTMLElement;
+                if (fallback) {
+                  fallback.style.display = 'flex';
+                }
+              }
+            }}
+          />
+          <div className="h-14 w-14 bg-primary rounded-lg flex items-center justify-center hidden">
+            <BookOpen className="w-7 h-7 text-white" />
           </div>
-          {!isCollapsed && (
-            <span className="text-xl font-bold text-primary">YUIChat</span>
-          )}
         </div>
       </div>
 
       {/* Current Project */}
       {!isCollapsed && (
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200 relative" ref={menuRef}>
           <div className="text-xs text-gray-500 mb-2">{t('currentProject')}</div>
           <button
             onClick={() => setShowProjectMenu(!showProjectMenu)}
@@ -135,12 +223,54 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
           >
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 bg-primary/20 rounded flex items-center justify-center">
-                <span className="text-xs font-semibold text-primary">Y</span>
+                <span className="text-xs font-semibold text-primary">
+                  {currentProject?.name?.charAt(0)?.toUpperCase() || 'Y'}
+                </span>
               </div>
-              <span className="text-sm font-medium text-gray-900">{currentProject}</span>
+              <span className="text-sm font-medium text-gray-900 truncate">
+                {currentProject?.name || t('defaultProject')}
+              </span>
             </div>
-            <ChevronDown className="w-4 h-4 text-gray-400" />
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showProjectMenu ? 'rotate-180' : ''}`} />
           </button>
+          
+          {/* 1.1.14: 项目下拉菜单 */}
+          {showProjectMenu && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => handleProjectChange(project.id)}
+                  className={`w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-50 transition-colors ${
+                    currentProject?.id === project.id ? 'bg-primary/10' : ''
+                  }`}
+                >
+                  <div className={`w-6 h-6 rounded flex items-center justify-center ${
+                    currentProject?.id === project.id ? 'bg-primary/20' : 'bg-gray-200'
+                  }`}>
+                    <span className={`text-xs font-semibold ${
+                      currentProject?.id === project.id ? 'text-primary' : 'text-gray-600'
+                    }`}>
+                      {project.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <span className="text-sm text-gray-900 truncate flex-1 text-left">{project.name}</span>
+                </button>
+              ))}
+              <div className="border-t border-gray-200 mt-1">
+                <button
+                  onClick={() => {
+                    setShowProjectMenu(false);
+                    navigate('/');
+                  }}
+                  className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-50 transition-colors text-sm text-gray-600"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  {t('allProjects')}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -152,7 +282,7 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
           return (
             <button
               key={item.id}
-              onClick={() => navigate(item.path)}
+              onClick={() => handleMenuItemClick(item)} // 1.2.3: 使用新的点击处理函数
               className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors ${
                 active
                   ? 'bg-primary/10 text-primary border-r-2 border-primary'

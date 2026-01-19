@@ -1,8 +1,8 @@
 // 1.0.0: YUIChat 项目 - Markdown 渲染组件
+// 1.2.10: 删除打字机效果图标，移除motion导入
 import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { motion } from 'framer-motion';
 
 interface MarkdownRendererProps {
   content: string;
@@ -75,13 +75,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
       >
         {content}
       </ReactMarkdown>
-      {isStreaming && (
-        <motion.span
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ duration: 1, repeat: Infinity }}
-          className="inline-block w-2 h-4 bg-primary ml-1"
-        />
-      )}
+      {/* 1.2.10: 删除打字机效果图标，只保留isTyping的loading图标 */}
     </div>
   );
 }, (prevProps, nextProps) => {

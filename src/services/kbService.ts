@@ -122,6 +122,41 @@ export async function getKnowledgeBase(kbId: string) {
   return data;
 }
 
+/**
+ * 1.1.11: 上传URL到知识库
+ */
+export async function uploadUrlsToKB(kbId: string, urls: string[]) {
+  // 1. 获取项目的 vector_collection
+  const { data: kb, error: kbError } = await supabase
+    .from('knowledge_bases')
+    .select('vector_collection')
+    .eq('id', kbId)
+    .single();
+
+  if (kbError || !kb) throw new Error('Knowledge base not found');
+
+  const collectionName = kb.vector_collection;
+
+  // 2. 调用 Python 后端处理URL
+  const response = await fetch(`${PY_BACKEND_URL}/api/process-url`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      urls: urls,
+      collection_name: collectionName, // 1.1.11: 使用项目的向量集合
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to process URLs in backend');
+  }
+
+  return await response.json();
+}
+
 export async function updateShareToken(kbId: string) {
   const { data, error } = await supabase
     .from('knowledge_bases')

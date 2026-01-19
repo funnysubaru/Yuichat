@@ -1,0 +1,18 @@
+/* 隐藏底部 "技术支持 Chainlit" 水印 */
+a[href="https://github.com/Chainlit/chainlit"] {
+  display: none !important;
+}
+
+/* 备用选择器 - 隐藏包含 Chainlit 链接的容器 */
+footer,
+div[class*="watermark"],
+a[href*="chainlit"] {
+  display: none !important;
+}
+
+/* 隐藏右上角的"说明"按钮 (readme) */
+button[id="readme-button"],
+button[aria-label*="readme"],
+button[aria-label*="说明"] {
+  display: none !important;
+}

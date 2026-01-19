@@ -14,3 +14,12 @@ supabase
 vecs
 tiktoken
 asyncpg
+# 1.1.11: URL爬虫依赖（保留作为可选加载器）
+playwright
+beautifulsoup4
+lxml
+# 1.1.12: 重构爬虫 - 使用 Selenium + unstructured
+selenium
+webdriver-manager
+unstructured[html]
+requests

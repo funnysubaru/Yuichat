@@ -2,6 +2,7 @@
  * 1.0.4: YUIChat 项目 - 全部项目页面
  * 显示所有项目卡片，包括创建项目卡片
  * 1.1.5: 实现创建项目功能
+ * 1.1.17: 在项目卡片蓝色区域显示完整项目名称，最多两行，超出显示省略号
  */
 
 import { useState, useEffect } from 'react';
@@ -128,7 +129,7 @@ export function AllProjectsPage() {
 
         {isLoading ? (
           <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <span className="inline-block text-primary font-semibold yui-loading-animation">YUI</span>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -192,10 +193,10 @@ export function AllProjectsPage() {
                     )}
                   </div>
 
-                  {/* 项目内容 */}
-                  <div className="relative z-10 text-center">
-                    <div className="text-4xl font-bold text-white mb-2">
-                      {project.avatar || project.name.charAt(0)}
+                  {/* 项目内容 - 1.1.17: 显示项目完整名称，最多两行，超出显示省略号 */}
+                  <div className="relative z-10 text-center w-full px-2">
+                    <div className="text-lg font-bold text-white line-clamp-2">
+                      {project.name}
                     </div>
                   </div>
                 </motion.div>

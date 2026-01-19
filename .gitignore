@@ -64,3 +64,5 @@ check-env-vars.js
 # Version snapshots
 .versions/
 
+# Large sample files
+sample/*.zip

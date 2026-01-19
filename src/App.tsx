@@ -13,6 +13,8 @@ import { ChatInterface } from './components/ChatInterface';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import { AllProjectsPage } from './pages/AllProjectsPage';
 import { SharePage } from './pages/SharePage';
+import { SettingsPage } from './pages/SettingsPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { AuthPage } from './pages/AuthPage';
 import { AuthModal } from './components/AuthModal';
 import { getCurrentUser, onAuthStateChange } from './services/authService';
@@ -62,7 +64,7 @@ function App() {
   if (isLoading && isSupabaseAvailable) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
       </div>
     );
   }
@@ -108,9 +110,9 @@ function App() {
                     <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
                     <Route path="/knowledge-base/documents" element={<KnowledgeBasePage />} />
                     <Route path="/chat" element={<ChatInterface />} />
-                    <Route path="/settings" element={<div className="p-8">{t('projectSettings')}</div>} />
+                    <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/share" element={<SharePage />} />
-                    <Route path="/dashboard" element={<div className="p-8">{t('dashboard')}</div>} />
+                    <Route path="/dashboard" element={<DashboardPage />} />
                   </Routes>
                 </main>
               </div>

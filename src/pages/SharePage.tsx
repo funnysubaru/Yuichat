@@ -5,38 +5,63 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom'; // 1.1.14: 导入 useSearchParams
 import { Share2, Copy, ExternalLink, RefreshCw, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
+import { getCurrentUser } from '../services/authService'; // 1.1.14: 导入用户服务
 
 export function SharePage() {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams(); // 1.1.14: 读取URL参数
   const [kb, setKb] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 1.1.2: 获取当前项目（knowledge_base）
+  // 1.1.14: 从URL参数获取当前项目（knowledge_base），确保知识库隔离
   useEffect(() => {
     async function fetchKB() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const user = await getCurrentUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-      const { data, error } = await supabase
-        .from('knowledge_bases')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+      const projectId = searchParams.get('project');
+      
+      if (projectId) {
+        // 1.1.14: 如果提供了项目ID，使用该ID获取知识库（并验证用户权限）
+        const { data, error } = await supabase
+          .from('knowledge_bases')
+          .select('*')
+          .eq('id', projectId)
+          .eq('user_id', user.id) // 1.1.14: 验证用户权限
+          .single();
 
-      if (!error) {
-        setKb(data);
+        if (error) {
+          console.error('Error loading knowledge base:', error);
+        } else {
+          setKb(data);
+        }
+      } else {
+        // 1.1.14: 如果没有提供项目ID，获取第一个知识库作为默认
+        const { data, error } = await supabase
+          .from('knowledge_bases')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!error) {
+          setKb(data);
+        }
       }
       setLoading(false);
     }
     fetchKB();
-  }, []);
+  }, [searchParams.get('project')]); // 1.1.14: 监听项目ID参数变化
 
   const chainlitBaseUrl = import.meta.env.VITE_CHAINLIT_URL || 'http://localhost:8000';
   // 1.1.2: 使用 share_token 作为 kb_id 参数

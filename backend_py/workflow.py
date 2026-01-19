@@ -1,4 +1,6 @@
 import os
+import asyncio
+import re  # 1.1.13: 导入 re 用于 collection_name 验证
 from typing import List, Dict, Any, TypedDict
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredExcelLoader
@@ -6,14 +8,24 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.documents import Document  # 1.1.12: 导入 Document 用于错误处理
 from langgraph.graph import StateGraph, END
 from dotenv import load_dotenv
+# 1.1.11: 导入爬虫模块
+from crawler import crawl_urls
 
 load_dotenv()
 
 # 1.1.3: 环境配置 - 支持本地/线上数据库切换
 USE_PGVECTOR = os.getenv("USE_PGVECTOR", "false").lower() == "true"
-DATABASE_URL = os.getenv("DATABASE_URL")
+# 1.1.17: 重命名为 PGVECTOR_DATABASE_URL 避免与 Chainlit 数据持久化冲突
+DATABASE_URL = os.getenv("PGVECTOR_DATABASE_URL") or os.getenv("DATABASE_URL")
+
+# 1.2.12: 文档片段数量配置 - 支持可配置的文档片段数量限制
+# MAX_CHUNKS: 最终使用的文档片段数量（默认4）
+MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "4"))
+# RETRIEVE_K: 检索时获取的文档数量，应该比 MAX_CHUNKS 大以便过滤错误文档（默认8）
+RETRIEVE_K = int(os.getenv("RETRIEVE_K", "8"))
 
 # 1.1.3: 如果启用 pgvector，导入 vecs 库
 if USE_PGVECTOR:
@@ -28,8 +40,10 @@ else:
     print("✅ 使用 Chroma 作为本地向量数据库")
 
 # 定义状态
+# 1.1.11: 添加URL爬虫相关字段
 class GraphState(TypedDict):
     file_path: str
+    urls: List[str]  # 1.1.11: URL列表（可选）
     docs: List[Any]
     splits: List[Any]
     collection_name: str
@@ -60,23 +74,168 @@ def process_file_node(state: GraphState):
     docs = loader.load()
     return {"docs": docs}
 
+# 1.1.11: URL爬虫节点
+def crawl_url_node(state: GraphState):
+    """1.1.11: 爬取URL并解析为Document"""
+    urls = state.get('urls', [])
+    if not urls:
+        if os.getenv("ENV") == "development":
+            print("No URLs provided, skipping URL crawling.")
+        return {"docs": state.get('docs', [])}
+    
+    if os.getenv("ENV") == "development":
+        print(f"🕷️ Crawling {len(urls)} URL(s)...")
+    
+    try:
+        # 1.1.11: 在同步函数中调用异步函数
+        # 优化事件循环处理，确保线程安全
+        import concurrent.futures
+        import threading
+        
+        def run_async_in_thread():
+            """在新线程中运行异步代码，创建独立的事件循环"""
+            # 创建新的事件循环
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(crawl_urls(urls))
+            finally:
+                # 确保关闭所有异步资源
+                try:
+                    # 取消所有待处理的任务
+                    pending = asyncio.all_tasks(new_loop)
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        new_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                except:
+                    pass
+                finally:
+                    new_loop.close()
+        
+        # 总是在新线程中运行，避免事件循环冲突
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(run_async_in_thread)
+            docs = future.result(timeout=600)  # 10分钟超时（URL爬取可能需要更长时间）
+        
+        if os.getenv("ENV") == "development":
+            print(f"✅ Successfully crawled {len(docs)} URL(s)")
+            # 1.1.12: 打印详细信息用于诊断，区分成功和失败的文档
+            for i, doc in enumerate(docs):
+                is_error = 'error' in doc.metadata or '解析失败' in doc.page_content or '爬取失败' in doc.page_content
+                status = "❌ 失败" if is_error else "✅ 成功"
+                print(f"  文档 {i+1}: {status} - 来源={doc.metadata.get('source', 'unknown')}, 内容长度={len(doc.page_content)} 字符")
+        
+        # 1.1.12: 按照 chatmax 逻辑，检查是否有解析失败的文档
+        # 如果有失败的文档，确保它们包含明确的错误标记
+        processed_docs = []
+        for doc in docs:
+            # 检查是否是错误文档
+            is_error = (
+                'error' in doc.metadata or 
+                '爬取失败' in doc.page_content or 
+                '解析失败' in doc.page_content or
+                doc.page_content.strip().startswith('爬取失败') or
+                doc.page_content.strip().startswith('解析失败')
+            )
+            
+            if is_error:
+                # 确保错误文档包含明确的错误标记
+                if 'error' not in doc.metadata:
+                    doc.metadata['error'] = '解析失败'
+                if not doc.page_content.strip().startswith('解析失败'):
+                    doc.page_content = f"解析失败: {doc.page_content}"
+            
+            processed_docs.append(doc)
+        
+        return {"docs": processed_docs}
+    except Exception as e:
+        error_msg = f"URL crawling failed: {str(e)}"
+        if os.getenv("ENV") == "development":
+            print(f"❌ {error_msg}")
+        # 1.1.12: URL爬虫失败时不中断整个流程，返回错误文档列表
+        # 这样至少前端能收到响应，而不是完全失败
+        error_docs = [
+            Document(
+                page_content=f"URL爬取失败: {str(e)}\n原始URL: {url}",
+                metadata={
+                    "source": url,
+                    "title": url,
+                    "url": url,
+                    "error": str(e)
+                }
+            )
+            for url in urls
+        ]
+        return {"docs": error_docs}
+
 # 1.1.0: 文本切片节点
 def split_text_node(state: GraphState):
     docs = state.get('docs', [])
     if not docs:
-        print("No documents to split, skipping.")
+        if os.getenv("ENV") == "development":
+            print("No documents to split, skipping.")
+        return {"splits": state.get('splits', [])}
+    
+    # 1.1.12: 按照 chatmax 逻辑，过滤掉错误文档（不进行切片和向量化）
+    valid_docs = []
+    error_docs = []
+    for doc in docs:
+        is_error = (
+            'error' in doc.metadata or 
+            '爬取失败' in doc.page_content or 
+            '解析失败' in doc.page_content or
+            doc.page_content.strip().startswith('爬取失败') or
+            doc.page_content.strip().startswith('解析失败')
+        )
+        if is_error:
+            error_docs.append(doc)
+        else:
+            valid_docs.append(doc)
+    
+    if error_docs and os.getenv("ENV") == "development":
+        print(f"⚠️ 跳过 {len(error_docs)} 个错误文档的切片和向量化")
+        for doc in error_docs:
+            print(f"  错误文档: {doc.metadata.get('source', 'unknown')} - {doc.metadata.get('error', '解析失败')}")
+    
+    if not valid_docs:
+        if os.getenv("ENV") == "development":
+            print("⚠️ 所有文档都是错误文档，跳过切片")
         return {"splits": state.get('splits', [])}
         
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    splits = text_splitter.split_documents(docs)
-    print(f"Split into {len(splits)} chunks")
+    splits = text_splitter.split_documents(valid_docs)
+    
+    if os.getenv("ENV") == "development":
+        print(f"Split into {len(splits)} chunks")
+        # 1.1.11: 打印切片来源信息
+        url_splits = sum(1 for s in splits if s.metadata.get('source', '').startswith(('http://', 'https://')))
+        if url_splits > 0:
+            print(f"  其中 {url_splits} 个切片来自URL爬取")
+    
     return {"splits": splits}
 
 # 1.1.0: 向量存储节点
 # 1.1.3: 支持 Chroma 和 pgvector 切换
+# 1.1.13: 加强知识库隔离，验证 collection_name
 def embed_and_store_node(state: GraphState):
     splits = state.get('splits', [])
     collection_name = state.get('collection_name', 'default_collection')
+    
+    # 1.1.15: 验证 collection_name 格式，确保知识库隔离
+    if not collection_name or not isinstance(collection_name, str) or not collection_name.strip():
+        error_msg = f"collection_name must be a non-empty string, got: {type(collection_name).__name__}={collection_name}"
+        if os.getenv("ENV") == "development":
+            print(f"❌ Embed and store node error: {error_msg}")
+        raise ValueError(error_msg)
+    
+    # 1.1.15: 确保 collection_name 符合命名规范（防止注入攻击）
+    collection_name = collection_name.strip()
+    if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
+        error_msg = f"Invalid collection_name format: {collection_name}"
+        if os.getenv("ENV") == "development":
+            print(f"❌ Embed and store node error: {error_msg}")
+        raise ValueError(error_msg)
     
     if not splits:
         if os.getenv("ENV") == "development":  # 1.1.3: 仅开发环境输出日志
@@ -114,6 +273,10 @@ def embed_and_store_node(state: GraphState):
             
             if os.getenv("ENV") == "development":  # 1.1.3: 仅开发环境输出日志
                 print(f"✅ Stored {len(splits)} vectors in Supabase pgvector: {collection_name}")
+                # 1.1.11: 打印存储的文档来源统计
+                url_vectors = sum(1 for m in metadatas if m.get('source', '').startswith(('http://', 'https://')))
+                if url_vectors > 0:
+                    print(f"  其中 {url_vectors} 个向量来自URL爬取")
         except Exception as e:
             print(f"❌ pgvector error: {e}, falling back to Chroma")
             # 1.1.3: 出错时回退到 Chroma
@@ -131,11 +294,16 @@ def embed_and_store_node(state: GraphState):
         )
         if os.getenv("ENV") == "development":  # 1.1.3: 仅开发环境输出日志
             print(f"✅ Stored {len(splits)} vectors in Chroma: {collection_name}")
+            # 1.1.11: 打印存储的文档来源统计
+            url_vectors = sum(1 for doc in splits if doc.metadata.get('source', '').startswith(('http://', 'https://')))
+            if url_vectors > 0:
+                print(f"  其中 {url_vectors} 个向量来自URL爬取")
     
     return {"collection_name": collection_name}
 
 # 1.1.0: 检索与问答节点 (RAG)
 # 1.1.3: 支持 Chroma 和 pgvector 切换
+# 1.1.13: 加强知识库隔离，验证 collection_name
 def chat_node(state: GraphState):
     messages = state.get('messages', [])
     if not messages:
@@ -143,7 +311,22 @@ def chat_node(state: GraphState):
             print("No messages provided, skipping chat node.")
         return {"answer": "", "messages": []}
         
-    collection_name = state['collection_name']
+    collection_name = state.get('collection_name')
+    
+    # 1.1.15: 验证 collection_name，确保知识库隔离
+    if not collection_name or not isinstance(collection_name, str) or not collection_name.strip():
+        error_msg = f"collection_name must be a non-empty string, got: {type(collection_name).__name__}={collection_name}"
+        if os.getenv("ENV") == "development":
+            print(f"❌ Chat node error: {error_msg}")
+        raise ValueError(error_msg)
+    
+    # 1.1.15: 确保 collection_name 符合命名规范（防止注入攻击）
+    collection_name = collection_name.strip()
+    if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
+        error_msg = f"Invalid collection_name format: {collection_name}"
+        if os.getenv("ENV") == "development":
+            print(f"❌ Chat node error: {error_msg}")
+        raise ValueError(error_msg)
     
     # 获取最后一条消息（用户问题）
     user_query = messages[-1].content
@@ -159,16 +342,39 @@ def chat_node(state: GraphState):
             embeddings_model = OpenAIEmbeddings()
             query_vector = embeddings_model.embed_query(user_query)
             
-            # 检索相似文档
+            # 1.2.12: 检索相似文档，使用可配置的片段数量
             results = collection.query(
                 query_vector=query_vector,
-                limit=4,
+                limit=MAX_CHUNKS,
                 include_value=False,
                 include_metadata=True
             )
             
-            # 提取文本
-            context = "\n\n".join([record[2].get("text", "") for record in results if record[2]])
+            # 提取文本并过滤错误文档
+            valid_texts = []
+            for record in results:
+                if record[2]:  # 确保有metadata
+                    text = record[2].get("text", "")
+                    metadata = record[2].get("metadata", {}) if isinstance(record[2], dict) else {}
+                    
+                    # 检查是否是错误文档
+                    is_error = (
+                        'error' in metadata or 
+                        '爬取失败' in text or 
+                        '解析失败' in text or
+                        text.strip().startswith('爬取失败') or
+                        text.strip().startswith('解析失败')
+                    )
+                    if not is_error and text.strip():
+                        valid_texts.append(text)
+            
+            # 1.2.12: 使用可配置的片段数量限制
+            context = "\n\n".join(valid_texts[:MAX_CHUNKS])
+            
+            # 1.1.11: 检查上下文是否为空
+            if not context or not context.strip() or len(context.strip()) < 50:
+                if os.getenv("ENV") == "development":
+                    print("⚠️ 警告: pgvector检索后上下文为空或过短")
             
         except Exception as e:
             print(f"❌ pgvector query error: {e}, falling back to Chroma")
@@ -177,18 +383,89 @@ def chat_node(state: GraphState):
                 persist_directory=f"./chroma_db/{collection_name}",
                 embedding_function=OpenAIEmbeddings()
             )
-            retriever = vectorstore.as_retriever()
+            # 1.2.12: 使用可配置的检索数量
+            retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVE_K})
             relevant_docs = retriever.invoke(user_query)
+            
+            # 1.1.11: 过滤掉错误文档
+            valid_docs = []
+            for doc in relevant_docs:
+                is_error = (
+                    'error' in doc.metadata or 
+                    '爬取失败' in doc.page_content or 
+                    '解析失败' in doc.page_content or
+                    doc.page_content.strip().startswith('爬取失败') or
+                    doc.page_content.strip().startswith('解析失败')
+                )
+                if not is_error:
+                    valid_docs.append(doc)
+            
+            # 1.2.12: 使用可配置的片段数量限制
+            if valid_docs:
+                relevant_docs = valid_docs[:MAX_CHUNKS]
+            
             context = "\n\n".join([doc.page_content for doc in relevant_docs])
+            
+            # 1.1.11: 检查上下文是否为空
+            if not context or not context.strip() or len(context.strip()) < 50:
+                if os.getenv("ENV") == "development":
+                    print("⚠️ 警告: pgvector回退到Chroma后上下文为空或过短")
     else:
         # 使用 Chroma（本地开发）
         vectorstore = Chroma(
             persist_directory=f"./chroma_db/{collection_name}",
             embedding_function=OpenAIEmbeddings()
         )
-        retriever = vectorstore.as_retriever()
+        # 1.2.12: 使用可配置的检索数量
+        retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVE_K})
         relevant_docs = retriever.invoke(user_query)
+        
+        # 1.1.11: 过滤掉错误文档（包含"爬取失败"或"error"字段的文档）
+        valid_docs = []
+        for doc in relevant_docs:
+            # 检查是否是错误文档
+            is_error = (
+                'error' in doc.metadata or 
+                '爬取失败' in doc.page_content or 
+                '解析失败' in doc.page_content or
+                doc.page_content.strip().startswith('爬取失败') or
+                doc.page_content.strip().startswith('解析失败')
+            )
+            if not is_error:
+                valid_docs.append(doc)
+        
+        # 1.2.12: 如果过滤后还有文档，使用过滤后的；否则使用原始的（至少返回一些内容）
+        original_count = len(relevant_docs)
+        if valid_docs:
+            # 1.2.12: 使用可配置的片段数量限制
+            relevant_docs = valid_docs[:MAX_CHUNKS]
+            if os.getenv("ENV") == "development":
+                print(f"🔍 检索到 {len(valid_docs)} 个有效文档（已过滤 {original_count - len(valid_docs)} 个错误文档）")
+        else:
+            # 如果没有有效文档，使用原始结果（可能都是错误文档）
+            # 1.2.12: 使用可配置的片段数量限制
+            relevant_docs = relevant_docs[:MAX_CHUNKS]
+            if os.getenv("ENV") == "development":
+                print(f"⚠️ 检索到的文档可能包含错误，使用原始结果")
+        
+        if os.getenv("ENV") == "development":
+            print(f"  最终使用 {len(relevant_docs)} 个文档片段:")
+            for i, doc in enumerate(relevant_docs):
+                source = doc.metadata.get('source', 'unknown')
+                print(f"  [{i+1}] 来源: {source}")
+        
         context = "\n\n".join([doc.page_content for doc in relevant_docs])
+    
+    # 1.1.11: 如果上下文为空或只有错误信息，给出提示
+    if not context or not context.strip() or len(context.strip()) < 50:
+        if os.getenv("ENV") == "development":
+            print("⚠️ 警告: 上下文为空或过短，可能没有找到相关文档")
+        # 返回一个友好的提示
+        return {
+            "answer": "抱歉，我在知识库中没有找到与您的问题相关的信息。请尝试：\n1. 使用不同的关键词提问\n2. 确认相关知识库文档已正确上传和索引\n3. 检查查询是否正确",
+            "messages": messages,
+            "context": ""
+        }
     
     # 生成回答
     prompt = ChatPromptTemplate.from_messages([
@@ -203,15 +480,38 @@ def chat_node(state: GraphState):
     
     return {"answer": response.content, "messages": messages + [response]}
 
+# 1.1.11: 入口节点 - 根据输入类型路由到不同处理节点
+def entry_node(state: GraphState):
+    """1.1.11: 入口节点，不做任何处理，仅用于路由"""
+    return state
+
+# 1.1.11: 入口路由函数 - 决定处理文件、URL还是直接聊天
+def route_entry(state: GraphState) -> str:
+    """
+    1.1.11: 根据状态决定入口点
+    - 如果有 file_path → process_file
+    - 如果有 urls → crawl_url
+    - 否则直接跳到聊天
+    """
+    file_path = state.get('file_path', '')
+    urls = state.get('urls', [])
+    
+    if file_path and file_path.strip():
+        return "process_file"
+    elif urls and len(urls) > 0:
+        return "crawl_url"
+    else:
+        # 直接跳到聊天
+        return "chat"
+
 # 1.1.10: 条件路由函数 - 判断是否需要处理文件
 def should_process_file(state: GraphState) -> str:
     """
-    1.1.10: 根据状态决定下一步
-    - 如果有 file_path 且有 docs/splits，说明需要处理文件
-    - 如果只有 messages，直接进行聊天
+    1.1.10: 根据状态决定下一步（从process_file节点）
+    - 如果有 file_path，进行文件处理后到split_text
+    - 否则直接跳到聊天
     """
-    file_path = state.get('file_path')
-    messages = state.get('messages', [])
+    file_path = state.get('file_path', '')
     
     # 如果有文件路径，进行文件处理
     if file_path and file_path.strip():
@@ -221,17 +521,31 @@ def should_process_file(state: GraphState) -> str:
     return "chat"
 
 # 构建工作流
+# 1.1.11: 更新工作流以支持URL爬虫
 def create_workflow():
     workflow = StateGraph(GraphState)
 
     # 添加节点
+    workflow.add_node("entry", entry_node)  # 1.1.11: 添加入口节点
     workflow.add_node("process_file", process_file_node)
+    workflow.add_node("crawl_url", crawl_url_node)  # 1.1.11: 添加爬虫节点
     workflow.add_node("split_text", split_text_node)
     workflow.add_node("embed_and_store", embed_and_store_node)
     workflow.add_node("chat", chat_node)
 
-    # 1.1.10: 设置边 - 支持条件路由
-    workflow.set_entry_point("process_file")
+    # 1.1.11: 设置入口点 - 根据输入类型路由
+    workflow.set_entry_point("entry")
+    workflow.add_conditional_edges(
+        "entry",
+        route_entry,
+        {
+            "process_file": "process_file",
+            "crawl_url": "crawl_url",
+            "chat": "chat"
+        }
+    )
+    
+    # 1.1.10: 文件处理节点的条件路由
     workflow.add_conditional_edges(
         "process_file",
         should_process_file,
@@ -240,8 +554,17 @@ def create_workflow():
             "chat": "chat"
         }
     )
+    
+    # 1.1.11: URL爬虫节点直接到split_text
+    workflow.add_edge("crawl_url", "split_text")
+    
+    # 文本切片后到向量存储
     workflow.add_edge("split_text", "embed_and_store")
+    
+    # 向量存储后到聊天
     workflow.add_edge("embed_and_store", "chat")
+    
+    # 聊天节点结束
     workflow.add_edge("chat", END)
 
     return workflow.compile()
