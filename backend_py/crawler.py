@@ -126,17 +126,23 @@ class SeleniumChromeURLLoader(BaseLoader):
         if self.infobarless:
             chrome_options.add_argument("--disable-infobars")
         
-        # 1.1.12: 使用 webdriver-manager 自动管理 ChromeDriver
+        # 1.2.39: 使用 webdriver-manager 自动管理 ChromeDriver
+        # 禁用 Selenium Manager，强制使用 webdriver-manager
+        import os as _os
+        _os.environ['SE_MANAGER_OFFLINE'] = 'true'  # 禁用 Selenium Manager 自动下载
+        
         if self.executable_path is None:
             try:
                 # 使用 webdriver-manager 自动下载和管理 ChromeDriver
-                service = ChromeService(ChromeDriverManager().install())
+                driver_path = ChromeDriverManager().install()
+                if _os.getenv("ENV") == "development":
+                    logger.info(f"Using ChromeDriver from webdriver-manager: {driver_path}")
+                service = ChromeService(driver_path)
                 return Chrome(service=service, options=chrome_options)
             except Exception as e:
-                if os.getenv("ENV") == "development":
-                    logger.warning(f"webdriver-manager failed, trying direct Chrome: {e}")
-                # 回退到直接使用 Chrome（依赖系统 ChromeDriver）
-                return Chrome(options=chrome_options)
+                if _os.getenv("ENV") == "development":
+                    logger.warning(f"webdriver-manager failed: {e}")
+                raise e  # 不再回退，直接抛出错误
         return Chrome(executable_path=self.executable_path, options=chrome_options)
 
     def load(self) -> List[Document]:

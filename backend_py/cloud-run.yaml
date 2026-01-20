@@ -1,0 +1,93 @@
+# 1.2.35: Cloud Run 服务配置
+# 使用此文件部署：gcloud run services update yuichat-backend --config cloud-run.yaml
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: yuichat-backend
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # 1.2.35: 设置最大实例数（避免成本过高）
+        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/minScale: "0"
+        # 1.2.35: 60分钟超时（文档处理可能需要较长时间）
+        run.googleapis.com/timeout: "3600s"
+        # 1.2.35: CPU 始终分配（提高性能，但会增加成本）
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 3600
+      containers:
+      - image: gcr.io/YOUR_PROJECT_ID/yuichat-backend:latest
+        ports:
+        - name: http1
+          containerPort: 8080
+        env:
+        # 1.2.35: Supabase 配置（从 Secret Manager 读取）
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: supabase-url
+              key: latest
+        - name: SUPABASE_SERVICE_ROLE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: supabase-service-role-key
+              key: latest
+        # 1.2.35: OpenAI API Key（从 Secret Manager 读取）
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openai-api-key
+              key: latest
+        # 1.2.35: 向量数据库配置
+        - name: USE_PGVECTOR
+          value: "true"
+        - name: PGVECTOR_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: pgvector-database-url
+              key: latest
+        # 1.2.35: 环境配置
+        - name: ENV
+          value: "production"
+        # 1.2.35: 文档检索配置
+        - name: MAX_CHUNKS
+          value: "4"
+        - name: RETRIEVE_K
+          value: "8"
+        # 1.2.35: 爬虫配置
+        - name: CRAWL_TIMEOUT
+          value: "30000"
+        - name: CRAWL_MAX_RETRIES
+          value: "3"
+        - name: CRAWL_MAX_CONCURRENT
+          value: "3"
+        - name: WAIT_NETWORK_IDLE
+          value: "2000"
+        resources:
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+        # 1.2.35: 健康检查
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 40
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5

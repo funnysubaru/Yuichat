@@ -8,6 +8,7 @@ package-lock.json
 .env.*.local
 .env.*
 !.env.example
+import.env
 
 # Build outputs
 dist/

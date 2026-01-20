@@ -1,6 +1,7 @@
 # 1.1.3: YuiChat 后端依赖
 langgraph
 # chainlit  # 1.2.24: 已替代，使用 FastAPI + SSE 流式输出
+fastapi  # 1.2.35: FastAPI Web 框架
 uvicorn  # 1.2.24: FastAPI 服务器
 langchain
 langchain-openai

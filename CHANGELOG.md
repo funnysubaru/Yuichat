@@ -1,5 +1,120 @@
 # Changelog
 
+## 1.2.39 (2026-01-20)
+
+### 配置变更
+
+- 🔄 **切换本地向量数据库到 Supabase pgvector**：
+  - 创建 `backend_py/.env.local` 配置文件，启用 pgvector
+  - 设置 `USE_PGVECTOR=true` 使用 Supabase 云端向量数据库
+  - 确认 Supabase 已启用 pgvector 扩展（版本 0.8.0）
+  - 向量数据现在存储在 Supabase PostgreSQL 数据库中，由 `vecs` 库管理
+  - 使用 **Shared Pooler**（IPv4 兼容）连接方式
+
+### 数据库迁移
+
+- 📦 **新增 `vector_documents` 向量存储表**：
+  - 创建专门的向量存储表，与现有 `documents` 元数据表分离
+  - 添加 `match_vector_documents` 相似度搜索函数
+  - 添加基于 `collection_name` 的索引，支持知识库隔离
+  - 配置 RLS 策略，确保数据安全
+
+### 代码改进
+
+- 🔧 **优化环境变量加载**：
+  - 修改 `workflow.py` 和 `app.py`，优先加载 `.env.local` 配置
+  - 确保本地开发配置覆盖默认配置
+
+- 🐛 **修复 vecs 库 API 兼容性问题**：
+  - 将 `query(query_vector=...)` 改为 `query(data=...)`（适配 vecs 0.4.5）
+  - 修复 `record[2]` 索引错误，改为 `record[1]`（vecs 返回格式为 `(id, metadata)`）
+  - 修复 pgvector 查询失败时回退到 Chroma 的逻辑
+
+- 🔧 **修复 ChromeDriver 问题**：
+  - 禁用 Selenium Manager，强制使用 webdriver-manager 管理 ChromeDriver
+  - 确保 URL 爬虫在本地环境正常工作
+
+### 配置说明
+
+- 📋 **环境变量配置**：
+  - `USE_PGVECTOR=true`：启用 Supabase pgvector
+  - `PGVECTOR_DATABASE_URL`：Supabase 数据库连接字符串
+  - 连接字符串格式（Shared Pooler，IPv4 兼容）：
+    `postgresql://postgres.[project-ref]:[password]@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres`
+
+## 1.2.38 (2026-01-20)
+
+### 问题修复
+
+- 🐛 **修复高频问题 API 无法正确查询知识库的问题**：
+  - 支持通过 `id` 或 `share_token` 两种方式查询知识库
+  - 前端传递的是项目 ID，后端之前只支持 share_token 查询
+  - 使用 `maybeSingle()` 替代 `single()` 避免查询失败时抛出异常
+  - 如果 share_token 查询失败，自动回退到 id 查询
+
+- 🔧 **修复 pgvector 数据库连接问题**：
+  - 密码中的特殊字符（`?` 和 `!`）需要 URL 编码
+  - 更新 GCP Secret Manager 中的连接字符串
+
+## 1.2.37 (2026-01-20)
+
+### 问题诊断和修复
+
+- 🔍 **增强向量数据库查询日志**：
+  - 添加 pgvector 查询的详细日志记录（查询词、返回结果数量等）
+  - 记录 pgvector 查询失败时的详细错误信息
+  - 记录 Chroma 回退尝试和失败原因
+  - 帮助诊断为什么 `docs_count: 0`（没有检索到文档）
+
+### 技术改进
+
+- 📝 **日志记录增强**：
+  - 在向量数据库查询的每个关键步骤添加日志
+  - 记录查询词、返回结果数量、有效文档数量等详细信息
+  - 便于定位 pgvector 查询失败或返回空结果的原因
+
+## 1.2.36 (2026-01-20)
+
+### 问题修复
+
+- 🐛 **修复线上环境高频问题使用默认问题的问题**：
+  - 添加 Python logging 模块，确保生产环境也能记录错误日志
+  - 改进 `/api/frequent-questions` 的错误处理和日志记录
+  - 在关键错误点添加日志记录（Supabase 连接失败、向量数据库查询失败、LLM 调用失败等）
+  - 所有错误现在都会记录到 Cloud Run 日志中，便于诊断问题
+  - 添加详细的错误信息，包括 kb_token、collection_name、language 等上下文信息
+
+### 技术改进
+
+- 📝 **日志记录增强**：
+  - 使用 Python logging 模块替代部分 print 语句
+  - 生产环境也会记录关键错误和警告
+  - 添加堆栈跟踪信息，便于调试
+
+## 1.2.35 (2026-01-20)
+
+### 部署和基础设施
+
+- 🚀 **GCP Cloud Run 部署支持**：
+  - 添加完整的 Dockerfile 配置，支持 Selenium/Playwright 浏览器自动化
+  - 创建 Cloud Run 部署配置文件和自动化部署脚本
+  - 添加 Secret Manager 密钥管理脚本
+  - 配置健康检查端点 (`/health`) 用于 Cloud Run 监控
+  - 优化容器配置，支持长时间运行的文档处理任务（60分钟超时）
+  - 添加详细的 GCP 部署文档 (`GCP_DEPLOYMENT.md`)
+
+### 技术改进
+
+- 📦 **Docker 配置优化**：
+  - 创建 `.dockerignore` 文件，排除不必要的文件
+  - 配置 Chromium 浏览器环境变量，支持 Selenium
+  - 设置生产环境默认配置（`USE_PGVECTOR=true`）
+  - 添加健康检查配置
+
+- 🔐 **安全增强**：
+  - 所有敏感信息通过 GCP Secret Manager 管理
+  - 环境变量和密钥分离，提高安全性
+
 ## 1.2.34 (2026-01-20)
 
 ### 国际化 (i18n)

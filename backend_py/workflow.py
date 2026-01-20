@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 # 1.1.11: 导入爬虫模块
 from crawler import crawl_urls
 
-load_dotenv()
+# 1.2.39: 优先加载 .env.local，然后加载 .env（如果存在）
+load_dotenv('.env.local')  # 本地开发配置优先
+load_dotenv()  # 回退到 .env
 
 # 1.1.3: 环境配置 - 支持本地/线上数据库切换
 USE_PGVECTOR = os.getenv("USE_PGVECTOR", "false").lower() == "true"
@@ -342,20 +344,20 @@ def chat_node(state: GraphState):
             embeddings_model = OpenAIEmbeddings()
             query_vector = embeddings_model.embed_query(user_query)
             
-            # 1.2.12: 检索相似文档，使用可配置的片段数量
+            # 1.2.39: 检索相似文档（vecs 0.4.5 API: data 替代 query_vector）
             results = collection.query(
-                query_vector=query_vector,
+                data=query_vector,
                 limit=MAX_CHUNKS,
                 include_value=False,
                 include_metadata=True
             )
             
-            # 提取文本并过滤错误文档
+            # 1.2.39: 提取文本并过滤错误文档（vecs 返回格式: (id, metadata)）
             valid_texts = []
             for record in results:
-                if record[2]:  # 确保有metadata
-                    text = record[2].get("text", "")
-                    metadata = record[2].get("metadata", {}) if isinstance(record[2], dict) else {}
+                if len(record) > 1 and record[1]:  # 确保有metadata
+                    text = record[1].get("text", "")
+                    metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
                     
                     # 检查是否是错误文档
                     is_error = (
@@ -525,9 +527,9 @@ async def chat_node_stream(state: GraphState):
             embeddings_model = OpenAIEmbeddings()
             query_vector = embeddings_model.embed_query(user_query)
             
-            # 检索相似文档
+            # 1.2.39: 检索相似文档（vecs 0.4.5 API: data 替代 query_vector）
             results = collection.query(
-                query_vector=query_vector,
+                data=query_vector,
                 limit=MAX_CHUNKS,
                 include_value=False,
                 include_metadata=True
@@ -536,9 +538,10 @@ async def chat_node_stream(state: GraphState):
             # 提取文本并过滤错误文档
             valid_texts = []
             for record in results:
-                if record[2]:
-                    text = record[2].get("text", "")
-                    metadata = record[2].get("metadata", {}) if isinstance(record[2], dict) else {}
+                # 1.2.39: vecs 返回格式: (id, metadata)
+                if len(record) > 1 and record[1]:
+                    text = record[1].get("text", "")
+                    metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
                     
                     is_error = (
                         'error' in metadata or 

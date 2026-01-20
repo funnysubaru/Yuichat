@@ -9,10 +9,20 @@ import os
 import uuid
 import re  # 1.1.13: 导入 re 用于 collection_name 验证
 import json  # 1.2.24: 用于 SSE 数据格式化
+import logging  # 1.2.36: 添加日志模块，用于生产环境错误记录
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-load_dotenv()
+# 1.2.39: 优先加载 .env.local，然后加载 .env（如果存在）
+load_dotenv('.env.local')  # 本地开发配置优先
+load_dotenv()  # 回退到 .env
+
+# 1.2.36: 配置日志记录器，确保生产环境也能记录错误
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # 1.1.2: 初始化 Supabase 客户端（用于查询 vector_collection）
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -23,10 +33,11 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # 1.2.24: 创建独立的 FastAPI 应用，替代 Chainlit
+# 1.2.36: 更新版本号
 fastapi_app = FastAPI(
     title="YUIChat API",
     description="YUIChat 后端 API，提供知识库管理和聊天功能",
-    version="1.2.24"
+    version="1.2.38"
 )
 
 # 1.2.24: 添加 CORS 中间件，允许前端访问
@@ -37,6 +48,17 @@ fastapi_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 1.2.35: 健康检查端点（用于 Cloud Run）
+# 1.2.36: 更新版本号
+@fastapi_app.get("/health")
+async def health_check():
+    """健康检查端点，用于 Cloud Run 健康检查"""
+    return {
+        "status": "healthy",
+        "service": "YUIChat API",
+        "version": "1.2.38"
+    }
 
 @fastapi_app.post("/api/process-file")
 async def process_file(request: Request):
@@ -789,14 +811,17 @@ async def get_chat_config(request: Request):
 # 1.2.0: 获取高频问题 API
 # 1.2.11: 基于文档生成常见问题，确保每个问题都有回复
 # 1.2.12: 改为POST请求，避免Chainlit拦截GET请求
+# 1.2.36: 改进错误处理和日志记录，确保生产环境也能追踪问题
 @fastapi_app.post("/api/frequent-questions")
 async def get_frequent_questions(request: Request):
     """
     获取高频问题（当项目未配置推荐问题时使用）
     1.2.11: 基于上传的文档生成问题，并确保每个问题都有回复
     1.2.12: 改为POST请求，避免Chainlit拦截GET请求
+    1.2.36: 改进错误处理和日志记录，确保生产环境也能追踪问题
     """
-    # 1.2.12: 添加调试日志，确认API是否被调用
+    # 1.2.36: 使用 logger 记录 API 调用（生产环境也会记录）
+    logger.info("API called: /api/frequent-questions")
     if os.getenv("ENV") == "development":
         print(f"✅ DEBUG: /api/frequent-questions API called")
     try:
@@ -811,6 +836,7 @@ async def get_frequent_questions(request: Request):
             language = request.query_params.get("language", "zh")
         
         if not kb_token:
+            logger.warning("Missing kb_id parameter in frequent-questions request")
             return JSONResponse(status_code=400, content={
                 "status": "error",
                 "message": "Missing kb_id"
@@ -820,39 +846,60 @@ async def get_frequent_questions(request: Request):
         if language not in ["zh", "en", "ja"]:
             language = "zh"
         
+        logger.info(f"Processing frequent questions request for kb_token: {kb_token}, language: {language}")
+        
         # 1.2.11: 从 Supabase 获取 vector_collection
+        # 1.2.36: 改进错误日志记录
+        # 1.2.38: 支持通过 id 或 share_token 查询
         collection_name = None
         if supabase:
             try:
+                # 1.2.38: 首先尝试通过 share_token 查询（使用 limit(1) 避免 single() 抛出异常）
                 result = supabase.table("knowledge_bases")\
                     .select("vector_collection")\
                     .eq("share_token", kb_token)\
-                    .single()\
+                    .limit(1)\
                     .execute()
                 
-                if result.data:
-                    vector_collection = result.data.get("vector_collection")
+                # 1.2.38: 如果 share_token 查询失败，尝试通过 id 查询
+                if not result.data or len(result.data) == 0:
+                    logger.info(f"share_token query returned no data, trying id query for: {kb_token}")
+                    result = supabase.table("knowledge_bases")\
+                        .select("vector_collection")\
+                        .eq("id", kb_token)\
+                        .limit(1)\
+                        .execute()
+                
+                if result.data and len(result.data) > 0:
+                    data = result.data[0]  # 获取第一条记录
+                    vector_collection = data.get("vector_collection")
                     if os.getenv("ENV") == "development":
                         print(f"🔍 DEBUG: Found vector_collection: {vector_collection}")
                     if vector_collection and isinstance(vector_collection, str) and vector_collection.strip():
                         collection_name = vector_collection.strip()
+                        logger.info(f"Found collection_name: {collection_name} for kb_token: {kb_token}")
                         if os.getenv("ENV") == "development":
                             print(f"✅ DEBUG: Using collection_name: {collection_name}")
                     else:
+                        logger.warning(f"vector_collection is empty or invalid for kb_token: {kb_token}, value: {vector_collection}")
                         if os.getenv("ENV") == "development":
                             print(f"⚠️ DEBUG: vector_collection is empty or invalid: {vector_collection}")
                 else:
+                    logger.warning(f"No data found in knowledge_bases for kb_token: {kb_token}")
                     if os.getenv("ENV") == "development":
                         print(f"⚠️ DEBUG: No data found for kb_token: {kb_token}")
             except Exception as e:
+                logger.error(f"Failed to fetch vector_collection from Supabase for kb_token {kb_token}: {str(e)}", exc_info=True)
                 if os.getenv("ENV") == "development":
                     print(f"⚠️ Failed to fetch vector_collection: {e}")
         else:
+            logger.error("Supabase client not initialized - missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
             if os.getenv("ENV") == "development":
                 print(f"⚠️ DEBUG: Supabase client not initialized")
         
         # 如果没有找到 collection_name，使用默认问题
         if not collection_name:
+            logger.warning(f"collection_name is None for kb_token: {kb_token}, returning default questions")
             if os.getenv("ENV") == "development":
                 print(f"⚠️ DEBUG: collection_name is None, using default questions")
             default_questions = {
@@ -906,6 +953,7 @@ async def get_frequent_questions(request: Request):
             if USE_PGVECTOR and DATABASE_URL:
                 # 使用 pgvector
                 try:
+                    logger.info(f"Attempting to query pgvector collection: {collection_name}")
                     vx = vecs.create_client(DATABASE_URL)
                     collection = vx.get_collection(name=collection_name)
                     embeddings_model = OpenAIEmbeddings()
@@ -914,16 +962,19 @@ async def get_frequent_questions(request: Request):
                     all_results = []
                     for query_word in query_words[:3]:  # 只使用前3个查询词
                         query_vector = embeddings_model.embed_query(query_word)
+                        # 1.2.39: vecs 0.4.5 API: data 替代 query_vector
                         results = collection.query(
-                            query_vector=query_vector,
+                            data=query_vector,
                             limit=2,
                             include_value=False,
                             include_metadata=True
                         )
+                        logger.info(f"pgvector query for '{query_word}' returned {len(results)} results")
                         for record in results:
-                            if record[2]:  # 确保有metadata
-                                text = record[2].get("text", "")
-                                metadata = record[2].get("metadata", {}) if isinstance(record[2], dict) else {}
+                            # 1.2.39: vecs 返回格式: (id, metadata)
+                            if len(record) > 1 and record[1]:  # 确保有metadata
+                                text = record[1].get("text", "")
+                                metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
                                 is_error = (
                                     'error' in metadata or 
                                     '爬取失败' in text or 
@@ -936,31 +987,41 @@ async def get_frequent_questions(request: Request):
                     
                     # 去重并限制数量
                     sample_docs = list(dict.fromkeys(all_results))[:10]  # 最多10个文档片段
+                    logger.info(f"Retrieved {len(sample_docs)} valid documents from pgvector for collection: {collection_name}")
                     if os.getenv("ENV") == "development":
                         print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from pgvector")
                 except Exception as e:
+                    logger.error(f"pgvector query failed for collection {collection_name}: {str(e)}", exc_info=True)
+                    logger.warning(f"Falling back to Chroma for collection: {collection_name}")
                     if os.getenv("ENV") == "development":
                         print(f"⚠️ pgvector query error: {e}, falling back to Chroma")
-                    # 回退到 Chroma
-                    vectorstore = Chroma(
-                        persist_directory=f"./chroma_db/{collection_name}",
-                        embedding_function=OpenAIEmbeddings()
-                    )
-                    retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
-                    for query_word in query_words[:3]:
-                        docs = retriever.invoke(query_word)
-                        for doc in docs:
-                            if doc.page_content and len(doc.page_content.strip()) > 50:
-                                is_error = (
-                                    'error' in doc.metadata or 
-                                    '爬取失败' in doc.page_content or 
-                                    '解析失败' in doc.page_content
-                                )
-                                if not is_error:
-                                    sample_docs.append(doc.page_content)
-                    sample_docs = list(dict.fromkeys(sample_docs))[:10]
-                    if os.getenv("ENV") == "development":
-                        print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from Chroma (fallback)")
+                    # 回退到 Chroma（注意：Cloud Run 环境中可能无法访问本地文件系统）
+                    logger.warning(f"Attempting Chroma fallback for collection: {collection_name} (may fail in Cloud Run)")
+                    try:
+                        vectorstore = Chroma(
+                            persist_directory=f"./chroma_db/{collection_name}",
+                            embedding_function=OpenAIEmbeddings()
+                        )
+                        retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+                        for query_word in query_words[:3]:
+                            docs = retriever.invoke(query_word)
+                            logger.info(f"Chroma query for '{query_word}' returned {len(docs)} docs")
+                            for doc in docs:
+                                if doc.page_content and len(doc.page_content.strip()) > 50:
+                                    is_error = (
+                                        'error' in doc.metadata or 
+                                        '爬取失败' in doc.page_content or 
+                                        '解析失败' in doc.page_content
+                                    )
+                                    if not is_error:
+                                        sample_docs.append(doc.page_content)
+                        sample_docs = list(dict.fromkeys(sample_docs))[:10]
+                        logger.info(f"Retrieved {len(sample_docs)} documents from Chroma (fallback) for collection: {collection_name}")
+                        if os.getenv("ENV") == "development":
+                            print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from Chroma (fallback)")
+                    except Exception as chroma_error:
+                        logger.error(f"Chroma fallback also failed for collection {collection_name}: {str(chroma_error)}", exc_info=True)
+                        raise  # 重新抛出异常，让外层处理
             else:
                 # 使用 Chroma
                 if os.getenv("ENV") == "development":
@@ -992,6 +1053,7 @@ async def get_frequent_questions(request: Request):
                         print(f"❌ DEBUG: Chroma error: {e}")
                     raise
         except Exception as e:
+            logger.error(f"Failed to retrieve documents from vector database (collection: {collection_name}): {str(e)}", exc_info=True)
             if os.getenv("ENV") == "development":
                 print(f"⚠️ Failed to retrieve documents: {e}")
                 import traceback
@@ -1121,13 +1183,16 @@ XXXにはどのような特徴がありますか？
                     try:
                         # 快速检索测试：检查是否能找到相关文档
                         found_doc = False
+                        use_chroma_fallback = False  # 1.2.39: 标记是否需要回退到 Chroma
+                        
                         if USE_PGVECTOR and DATABASE_URL:
                             try:
                                 vx = vecs.create_client(DATABASE_URL)
                                 collection = vx.get_collection(name=collection_name)
                                 query_vector = embeddings_model.embed_query(question)
+                                # 1.2.39: vecs 0.4.5 API: data 替代 query_vector
                                 results = collection.query(
-                                    query_vector=query_vector,
+                                    data=query_vector,
                                     limit=1,
                                     include_value=False,
                                     include_metadata=True
@@ -1135,9 +1200,10 @@ XXXにはどのような特徴がありますか？
                                 if results and len(results) > 0:
                                     # 检查结果是否有效（不是错误文档）
                                     record = results[0]
-                                    if record[2]:  # 确保有metadata
-                                        text = record[2].get("text", "")
-                                        metadata = record[2].get("metadata", {}) if isinstance(record[2], dict) else {}
+                                    # 1.2.39: vecs 返回格式: (id, metadata)
+                                    if len(record) > 1 and record[1]:  # 确保索引存在且有metadata
+                                        text = record[1].get("text", "")
+                                        metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
                                         is_error = (
                                             'error' in metadata or 
                                             '爬取失败' in text or 
@@ -1147,11 +1213,19 @@ XXXにはどのような特徴がありますか？
                                         )
                                         if not is_error and text.strip() and len(text.strip()) > 50:
                                             found_doc = True
+                                    else:
+                                        use_chroma_fallback = True  # 结果格式不对，回退到 Chroma
+                                else:
+                                    use_chroma_fallback = True  # 没有结果，回退到 Chroma
                             except Exception as e:
                                 if os.getenv("ENV") == "development":
                                     print(f"⚠️ pgvector validation error for '{question}': {e}")
+                                use_chroma_fallback = True  # 1.2.39: pgvector 失败，回退到 Chroma
                         else:
-                            # 使用Chroma快速测试
+                            use_chroma_fallback = True
+                        
+                        # 1.2.39: 如果需要回退到 Chroma
+                        if use_chroma_fallback and not found_doc:
                             try:
                                 vectorstore = Chroma(
                                     persist_directory=f"./chroma_db/{collection_name}",
@@ -1216,6 +1290,7 @@ XXXにはどのような特徴がありますか？
                         headers={"Content-Type": "application/json"}
                     )
             except Exception as e:
+                logger.error(f"Failed to generate questions with LLM (collection: {collection_name}, language: {language}): {str(e)}", exc_info=True)
                 if os.getenv("ENV") == "development":
                     print(f"⚠️ Failed to generate questions: {e}")
                     import traceback
@@ -1223,6 +1298,7 @@ XXXにはどのような特徴がありますか？
                 # 生成失败时，继续执行下面的代码返回默认问题
         
         # 如果没有文档或生成失败，返回默认问题
+        logger.warning(f"Returning default questions for kb_token: {kb_token}, reason: no documents or generation failed (docs_count: {len(sample_docs) if 'sample_docs' in locals() else 0})")
         if os.getenv("ENV") == "development":
             print(f"⚠️ DEBUG: No documents or generation failed, using default questions")
         default_questions = {
@@ -1252,18 +1328,26 @@ XXXにはどのような特徴がありますか？
             headers={"Content-Type": "application/json"}
         )
     except Exception as e:
+        # 1.2.36: 记录完整的错误信息，包括堆栈跟踪（生产环境也会记录）
+        logger.error(f"Frequent questions API error: {str(e)}", exc_info=True)
         if os.getenv("ENV") == "development":
             print(f"❌ Frequent questions API error: {e}")
             import traceback
             traceback.print_exc()
         # 出错时返回默认问题，确保总是返回JSON响应
         try:
-            language = request.query_params.get("language", "zh")
+            # 尝试从请求中获取语言参数
+            try:
+                data = await request.json()
+                language = data.get("language", "zh")
+            except:
+                language = request.query_params.get("language", "zh")
             if language not in ["zh", "en", "ja"]:
                 language = "zh"
         except:
             language = "zh"
         
+        logger.warning(f"Returning default questions due to exception for language: {language}")
         default_questions = {
             "zh": ["您能介绍一下这个项目吗？", "有哪些常见问题？", "如何使用这个系统？"],
             "en": ["Can you introduce this project?", "What are the common questions?", "How to use this system?"],
