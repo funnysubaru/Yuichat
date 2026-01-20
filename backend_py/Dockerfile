@@ -1,4 +1,4 @@
-# 1.2.35: YUIChat Python 后端 Dockerfile for GCP Cloud Run
+# 1.2.40: YUIChat Python 后端 Dockerfile for GCP Cloud Run
 # 基于 Python 3.11，支持 FastAPI、LangGraph、Selenium/Playwright
 
 FROM python:3.11-slim

@@ -1,5 +1,6 @@
-# 1.2.35: Cloud Run 服务配置
+# 1.2.40: Cloud Run 服务配置
 # 使用此文件部署：gcloud run services update yuichat-backend --config cloud-run.yaml
+# 注意：镜像地址已迁移到 Artifact Registry
 
 apiVersion: serving.knative.dev/v1
 kind: Service
@@ -22,7 +23,8 @@ spec:
       containerConcurrency: 80
       timeoutSeconds: 3600
       containers:
-      - image: gcr.io/YOUR_PROJECT_ID/yuichat-backend:latest
+      # 1.2.40: 迁移到 Artifact Registry (gcr.io 将于 2025-03-18 停止写入)
+      - image: asia-east1-docker.pkg.dev/YOUR_PROJECT_ID/yuichat/yuichat-backend:latest
         ports:
         - name: http1
           containerPort: 8080

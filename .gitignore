@@ -32,6 +32,11 @@ Thumbs.db
 *.swo
 *~
 
+# AI/Dev Tools
+.specstory/
+.chainlit/
+.claude/
+
 # Logs
 *.log
 npm-debug.log*
