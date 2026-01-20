@@ -2,10 +2,12 @@
  * 1.2.13: 对话记录侧边栏组件
  * 参考ChatMax的设计，显示对话记录列表
  * 1.2.16: 改为浮窗形式，默认显示icon，点击展开/收起
+ * 1.2.26: 添加国际化支持，对话记录文本跟随系统语言切换
  */
 
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, MessageSquare, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next'; // 1.2.26
 import { useChatStore } from '../store/chatStore';
 import {
   listConversations,
@@ -51,6 +53,7 @@ export function ConversationHistorySidebar({
   onConversationSelect,
   onNewConversation,
 }: ConversationHistorySidebarProps) {
+  const { t } = useTranslation(); // 1.2.26: 国际化钩子
   const {
     conversations,
     currentConversationId,
@@ -88,7 +91,7 @@ export function ConversationHistorySidebar({
         setConversations(conversationList);
       } catch (error) {
         logger.error('Error loading conversations:', error);
-        toast.error('加载对话记录失败');
+        toast.error(t('loadConversationsFailed')); // 1.2.26: 国际化
       } finally {
         setLoading(false);
       }
@@ -100,14 +103,14 @@ export function ConversationHistorySidebar({
   // 1.2.13: 处理创建新对话
   const handleNewConversation = async () => {
     if (!kbId) {
-      toast.error('请先选择项目');
+      toast.error(t('pleaseSelectProject')); // 1.2.26: 国际化
       return;
     }
 
     try {
       const user = await getCurrentUser();
       if (!user) {
-        toast.error('请先登录');
+        toast.error(t('pleaseLogin')); // 1.2.26: 国际化
         return;
       }
 
@@ -121,7 +124,7 @@ export function ConversationHistorySidebar({
       }
     } catch (error) {
       logger.error('Error creating new conversation:', error);
-      toast.error('创建新对话失败');
+      toast.error(t('createConversationFailed')); // 1.2.26: 国际化
     }
   };
 
@@ -144,7 +147,7 @@ export function ConversationHistorySidebar({
       }
     } catch (error) {
       logger.error('Error loading conversation:', error);
-      toast.error('加载对话失败');
+      toast.error(t('loadConversationFailed')); // 1.2.26: 国际化
     } finally {
       setLoading(false);
     }
@@ -176,10 +179,10 @@ export function ConversationHistorySidebar({
         }
       }
 
-      toast.success('删除成功');
+      toast.success(t('deleteConversationSuccess')); // 1.2.26: 国际化
     } catch (error) {
       logger.error('Error deleting conversation:', error);
-      toast.error('删除失败');
+      toast.error(t('deleteConversationFailed')); // 1.2.26: 国际化
     } finally {
       setDeletingId(null);
       setShowDeleteModal(false);
@@ -193,16 +196,17 @@ export function ConversationHistorySidebar({
 
   // 1.2.16: 浮窗icon模式
   // 1.2.18: 改为右侧中间位置，显示"对话记录"文字
+  // 1.2.26: 使用国际化文本
   if (!isExpanded) {
     return (
       <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50">
         <button
           onClick={() => setIsExpanded(true)}
           className="bg-white rounded-lg shadow-lg border border-gray-200 flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors"
-          title="对话记录"
+          title={t('conversationHistory')}
         >
           <MessageSquare className="w-5 h-5 text-gray-700 flex-shrink-0" />
-          <span className="text-sm text-gray-700 font-medium whitespace-nowrap">对话记录</span>
+          <span className="text-sm text-gray-700 font-medium whitespace-nowrap">{t('conversationHistory')}</span>
         </button>
       </div>
     );
@@ -214,34 +218,37 @@ export function ConversationHistorySidebar({
     <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 w-80 bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col" style={{ maxHeight: 'calc(100vh - 100px)' }}>
       {/* 标题栏 */}
       {/* 1.2.18: 箭头在左侧，文字在右侧 */}
+      {/* 1.2.26: 使用国际化文本 */}
       <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
         <button
           onClick={() => setIsExpanded(false)}
           className="p-1 hover:bg-gray-100 rounded transition-colors"
-          title="收起"
+          title={t('collapseConversations')}
         >
           <ChevronRight className="w-5 h-5 text-gray-600" />
         </button>
-        <h2 className="text-lg font-semibold text-gray-900">对话记录</h2>
+        <h2 className="text-lg font-semibold text-gray-900">{t('conversationHistory')}</h2>
       </div>
 
       {/* 新增对话按钮 */}
+      {/* 1.2.26: 使用国际化文本 */}
       <div className="p-4 border-b border-gray-200 flex-shrink-0">
         <button
           onClick={handleNewConversation}
           className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors flex items-center justify-center gap-2 font-medium"
         >
           <Plus className="w-5 h-5" />
-          新增对话
+          {t('newConversation')}
         </button>
       </div>
 
       {/* 对话列表 */}
+      {/* 1.2.26: 使用国际化文本 */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {loading && conversations.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">加载中...</div>
+          <div className="p-4 text-center text-gray-500">{t('loading')}</div>
         ) : conversations.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">暂无对话记录</div>
+          <div className="p-4 text-center text-gray-500">{t('noConversations')}</div>
         ) : (
           <div className="p-2">
             {conversations.map((conv) => (
@@ -265,6 +272,7 @@ export function ConversationHistorySidebar({
                 </div>
 
                 {/* 删除按钮 */}
+                {/* 1.2.26: 使用国际化文本 */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -272,7 +280,7 @@ export function ConversationHistorySidebar({
                   }}
                   disabled={deletingId === conv.id}
                   className="absolute top-2 right-2 p-1 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 disabled:opacity-50"
-                  title="删除对话"
+                  title={t('deleteConversation')}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -283,6 +291,7 @@ export function ConversationHistorySidebar({
       </div>
 
       {/* 删除确认模态框 */}
+      {/* 1.2.26: 使用国际化文本 */}
       <ConfirmModal
         isOpen={showDeleteModal}
         onClose={(confirmed) => {
@@ -293,8 +302,8 @@ export function ConversationHistorySidebar({
             setSelectedConversationId(null);
           }
         }}
-        title="删除对话"
-        description="确定要删除这个对话吗？此操作不可恢复。"
+        title={t('deleteConversation')}
+        description={t('deleteConversationConfirm')}
         isDelete={true}
       />
     </div>

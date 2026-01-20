@@ -63,11 +63,14 @@ function Avatar({ avatarUrl, size = 'md' }: AvatarProps) {
 interface ChatInterfaceProps {
   language?: string;
   onScroll?: (scrollTop: number) => void;
+  // 1.2.25: 支持外部传入知识库对象（用于公开分享页面）
+  externalKb?: any;
+  isPublicMode?: boolean; // 是否为公开访问模式（不需要登录）
 }
 
 const PY_BACKEND_URL = import.meta.env.VITE_PY_BACKEND_URL || 'http://localhost:8000';
 
-export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps) {
+export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicMode = false }: ChatInterfaceProps) {
   const { t, i18n } = useTranslation();
   const [searchParams] = useSearchParams(); // 1.1.13: 读取URL参数
   const location = useLocation(); // 1.2.2: 获取当前路由信息
@@ -110,12 +113,65 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
 
   // 1.1.15: 从URL参数加载当前知识库，确保知识库隔离
   // 当项目切换时，清空对话历史
+  // 1.2.25: 支持外部传入知识库对象（用于公开分享页面）
   const projectId = searchParams.get('project'); // 1.1.15: 在useEffect外部获取，避免依赖问题
   
   useEffect(() => {
     async function loadKB() {
+      // 1.2.25: 如果是公开模式且提供了外部知识库，直接使用
+      if (isPublicMode && externalKb) {
+        const previousKbId = currentKb?.id;
+        
+        // 如果知识库变化，清空对话历史
+        if (previousKbId && previousKbId !== externalKb.id) {
+          clearMessages();
+          if (import.meta.env.DEV) {
+            logger.log(`External KB changed from ${previousKbId} to ${externalKb.id}, clearing conversation history`);
+          }
+        }
+        
+        setCurrentKb(externalKb);
+        setCurrentKbId(externalKb.id);
+        
+        // 重置配置加载标记
+        if (previousKbId && previousKbId !== externalKb.id) {
+          configLoadedRef.current = null;
+        }
+        
+        // 设置聊天配置
+        const config = externalKb.chat_config || {};
+        const currentLang = i18n.language.split('-')[0];
+        const lang = ['zh', 'en', 'ja'].includes(currentLang) ? currentLang : 'zh';
+        const avatarUrl = config.avatar_url || '';
+        const welcomeMessage = config.welcome_message?.[lang] || config.welcome_message?.zh || t('chatWelcomeMessage');
+        const recommendedQuestions = config.recommended_questions?.[lang] || [];
+        
+        if (recommendedQuestions.length > 0) {
+          setChatConfig({
+            avatarUrl,
+            welcomeMessage,
+            recommendedQuestions: recommendedQuestions.slice(0, 3)
+          });
+          setLoadingQuestions(false);
+        } else {
+          setChatConfig({
+            avatarUrl,
+            welcomeMessage,
+            recommendedQuestions: []
+          });
+        }
+        
+        // 如果消息为空且配置未加载，触发加载
+        if (messages.length === 0 && configLoadedRef.current !== externalKb.id) {
+          // 让useEffect自动加载
+        }
+        
+        return;
+      }
+      
+      // 1.2.25: 如果不是公开模式，需要验证用户权限
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user && !isPublicMode) return;
       
       // 1.2.1: 如果项目ID变化，清空对话历史（不同项目的对话应该隔离）
       const previousKbId = currentKb?.id;
@@ -127,7 +183,7 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
           .from('knowledge_bases')
           .select('*')
           .eq('id', projectId)
-          .eq('user_id', user.id) // 1.1.15: 验证用户权限
+          .eq('user_id', user!.id) // 1.1.15: 验证用户权限
           .single();
         
         if (error) {
@@ -140,7 +196,7 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
         const { data } = await supabase
           .from('knowledge_bases')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', user!.id)
           .limit(1)
           .single();
         kb = data;
@@ -199,7 +255,7 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
     }
     loadKB();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]); // 1.1.15: 只监听项目ID参数变化，避免循环更新
+  }, [projectId, externalKb, isPublicMode]); // 1.2.25: 监听外部知识库和公开模式变化
 
   // 1.2.3: 检测路由变化，当从其他页面导航到测试对话时，刷新聊天框并显示欢迎语
   // 同时检测 URL 完整路径（包括查询参数）的变化和 _refresh 参数
@@ -598,7 +654,8 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
     }
 
     // 1.2.14: 如果没有对话，创建新对话
-    if (!currentConversationId && messages.length === 0) {
+    // 1.2.25: 公开模式下不需要创建对话记录
+    if (!isPublicMode && !currentConversationId && messages.length === 0) {
       try {
         const user = await getCurrentUser();
         if (!user) {
@@ -710,7 +767,7 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
       
       updateMessage(assistantMessageId, {
         status: 'error',
-        error: `对话失败: ${errorMessage}。请确保 Python 后端正在运行，或使用右侧"开始对话"通过 Chainlit 界面进行测试。`,
+        error: `对话失败: ${errorMessage}。请确保 Python 后端正在运行。`,
       });
     } finally {
       setIsTyping(false);
@@ -733,7 +790,8 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
     setIsTyping(true);
 
     // 1.2.13: 如果没有对话，创建新对话
-    if (!currentConversationId && messages.length === 0) {
+    // 1.2.25: 公开模式下不需要创建对话记录
+    if (!isPublicMode && !currentConversationId && messages.length === 0) {
       try {
         const user = await getCurrentUser();
         if (!user) {
@@ -892,7 +950,7 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
       
       updateMessage(assistantMessageId, {
         status: 'error',
-        error: `对话失败: ${errorMessage}。请确保 Python 后端正在运行，或使用右侧"开始对话"通过 Chainlit 界面进行测试。`,
+        error: `对话失败: ${errorMessage}。请确保 Python 后端正在运行。`,
       });
     } finally {
       setIsTyping(false);
@@ -908,6 +966,9 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
     }
   };
 
+  // 1.2.25: 改为指向前端公开分享页面，替代 Chainlit
+  const publicShareUrl = currentKb ? `${window.location.origin}/share/${currentKb.share_token}` : '';
+  // 保留 chainlitUrl 用于错误提示中的链接（向后兼容）
   const chainlitUrl = currentKb ? `${import.meta.env.VITE_CHAINLIT_URL || 'http://localhost:8000'}/?kb_id=${currentKb.share_token}` : '';
 
   // 1.1.10: 处理新建对话
@@ -943,9 +1004,10 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
 
   // 1.2.13: 自动保存消息到数据库
   // 1.2.14: 修复标题更新逻辑，防止重复保存
+  // 1.2.25: 公开模式下不保存消息
   const autoSaveMessage = useCallback(
     async (message: ChatMessage) => {
-      if (!currentConversationId || !currentKb) return;
+      if (isPublicMode || !currentConversationId || !currentKb) return;
 
       // 1.2.14: 防止重复保存
       if (savedMessageIdsRef.current.has(message.id)) {
@@ -992,7 +1054,7 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
         // 1.2.13: 静默失败，不影响用户体验
       }
     },
-    [currentConversationId, currentKb, messages]
+    [isPublicMode, currentConversationId, currentKb, messages]
   );
 
   // 1.2.13: 监听消息变化，自动保存
@@ -1018,25 +1080,29 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
       {/* 1.2.13: 主聊天区域 */}
       <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* 1.1.2: 顶部提示栏 */}
-        <div className="bg-purple-50 px-4 py-2 border-b border-purple-100 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-purple-700">这是内部测试界面。直接面向用户的界面请使用 Chainlit。</span>
-            {/* 1.1.10: 新建对话按钮 */}
-            {messages.length > 0 && (
-              <button
-                onClick={handleNewConversation}
-                className="text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
-              >
-                新建对话
-              </button>
+        {/* 1.2.25: 公开模式下不显示内部测试提示 */}
+        {!isPublicMode && (
+          <div className="bg-purple-50 px-4 py-2 border-b border-purple-100 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-purple-700">这是内部测试界面。</span>
+              {/* 1.1.10: 新建对话按钮 */}
+              {messages.length > 0 && (
+                <button
+                  onClick={handleNewConversation}
+                  className="text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
+                >
+                  新建对话
+                </button>
+              )}
+            </div>
+            {/* 1.2.25: 改为指向公开分享页面 */}
+            {publicShareUrl && (
+              <a href={publicShareUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-purple-600 flex items-center gap-1 hover:text-purple-700 hover:underline">
+                打开公开分享页面 <ExternalLink className="w-3 h-3" />
+              </a>
             )}
           </div>
-          {chainlitUrl && (
-            <a href={chainlitUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-purple-600 flex items-center gap-1 hover:text-purple-700 hover:underline">
-              打开面向用户界面 <ExternalLink className="w-3 h-3" />
-            </a>
-          )}
-        </div>
+        )}
 
         {/* 1.2.17: 对话消息区域 - 可滚动，为底部固定输入框留出空间 */}
         <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-24 space-y-4 min-h-0">
@@ -1067,8 +1133,9 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
                       >
                         YUI
                       </span>
+                      {/* 1.2.27: 国际化思考中文本 */}
                       <p className="text-gray-800 leading-relaxed">
-                        AI正在思考中
+                        {t('aiThinking')}
                       </p>
                     </div>
                   </div>
@@ -1118,11 +1185,12 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
                 ))
               ) : (
                 // 1.2.12: 只有在加载完成且没有推荐问题时，才显示默认问题
+                // 1.2.28: 使用 i18n 翻译默认问题
                 <>
                   {[
-                    "您能介绍一下这个项目吗？",
-                    "有哪些常见问题？",
-                    "如何使用这个系统？"
+                    t('defaultQuestion1'),
+                    t('defaultQuestion2'),
+                    t('defaultQuestion3')
                   ].map((question: string, index: number) => (
                     <motion.button
                       key={index}
@@ -1147,8 +1215,9 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
             </div>
             
             {/* 1.2.8: 添加免责声明 */}
+            {/* 1.2.28: 使用 i18n 翻译免责声明 */}
             <div className="mt-6 ml-[52px] text-xs text-gray-400">
-              以上内容由AI生成，不代表开发者立场
+              {t('aiGeneratedDisclaimer')}
             </div>
           </div>
           )
@@ -1172,9 +1241,12 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
                       {message.status === 'error' && message.error && (
                         <div className="mt-2 flex flex-col gap-2">
                           <p className="text-red-600 text-sm">{message.error}</p>
-                          <a href={chainlitUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-                            去 Chainlit 测试 <ExternalLink className="w-4 h-4" />
-                          </a>
+                          {/* 1.2.25: 改为指向公开分享页面 */}
+                          {publicShareUrl && (
+                            <a href={publicShareUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                              在公开页面重试 <ExternalLink className="w-4 h-4" />
+                            </a>
+                          )}
                         </div>
                       )}
                     </>
@@ -1217,11 +1289,14 @@ export function ChatInterface({ language = 'zh', onScroll }: ChatInterfaceProps)
       </div>
 
       {/* 1.2.16: 对话记录浮窗 */}
-      <ConversationHistorySidebar
-        kbId={currentKb?.id || null}
-        onConversationSelect={handleConversationSelect}
-        onNewConversation={handleNewConversationFromSidebar}
-      />
+      {/* 1.2.25: 公开模式下不显示对话记录 */}
+      {!isPublicMode && (
+        <ConversationHistorySidebar
+          kbId={currentKb?.id || null}
+          onConversationSelect={handleConversationSelect}
+          onNewConversation={handleNewConversationFromSidebar}
+        />
+      )}
     </div>
   );
 }

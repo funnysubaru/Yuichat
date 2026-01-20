@@ -1,16 +1,21 @@
 /**
  * 1.2.24: 公开聊天页面 - 用于外部分享
+ * 1.2.25: 修复高频问题和欢迎语无法显示的问题，传递知识库对象给 ChatInterface
+ * 1.2.28: 添加多语言支持，集成 i18n 和语言切换器
  * 无需登录即可访问，通过 share_token 识别知识库
  */
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ChatInterface } from '../components/ChatInterface';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { supabase } from '../lib/supabase';
 import { Bot } from 'lucide-react';
 
 export function PublicChatPage() {
   const { shareToken } = useParams<{ shareToken: string }>();
+  const { t, i18n } = useTranslation(); // 1.2.28: 集成 i18n
   const [kb, setKb] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +23,7 @@ export function PublicChatPage() {
   useEffect(() => {
     async function loadKnowledgeBase() {
       if (!shareToken) {
-        setError('无效的分享链接');
+        setError(t('publicChatInvalidLink')); // 1.2.28: 使用翻译
         setLoading(false);
         return;
       }
@@ -32,7 +37,7 @@ export function PublicChatPage() {
           .single();
 
         if (error || !data) {
-          setError('未找到该知识库或链接已失效');
+          setError(t('publicChatInvalidLink')); // 1.2.28: 使用翻译
           setLoading(false);
           return;
         }
@@ -41,20 +46,20 @@ export function PublicChatPage() {
         setLoading(false);
       } catch (err) {
         console.error('Error loading knowledge base:', err);
-        setError('加载知识库失败');
+        setError(t('publicChatInvalidLink')); // 1.2.28: 使用翻译
         setLoading(false);
       }
     }
 
     loadKnowledgeBase();
-  }, [shareToken]);
+  }, [shareToken, t]); // 1.2.28: 添加 t 依赖
 
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-gray-600">加载中...</p>
+          <p className="text-gray-600">{t('publicChatLoading')}</p>
         </div>
       </div>
     );
@@ -67,37 +72,51 @@ export function PublicChatPage() {
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Bot className="w-8 h-8 text-red-500" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">访问失败</h1>
-          <p className="text-gray-600 mb-6">{error || '该分享链接无效或已失效'}</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('publicChatAccessFailed')}</h1>
+          <p className="text-gray-600 mb-6">{error || t('publicChatInvalidLink')}</p>
           <p className="text-sm text-gray-500">
-            请联系分享者获取新的链接，或检查链接是否完整。
+            {t('publicChatContactOwner')}
           </p>
         </div>
       </div>
     );
   }
 
+  // 1.2.28: 获取当前语言，用于传递给 ChatInterface
+  const currentLang = i18n.language.split('-')[0];
+
   // 1.2.24: 渲染聊天界面，使用公开访问模式
   return (
     <div className="min-h-screen bg-white">
-      {/* 顶部项目信息栏 */}
+      {/* 1.2.28: 顶部项目信息栏 - 添加语言切换器 */}
       <div className="border-b border-gray-200 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Bot className="w-6 h-6 text-primary" />
+          <div className="flex items-center justify-between">
+            {/* 左侧：项目信息 */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Bot className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-gray-900">{kb.name}</h1>
+                <p className="text-sm text-gray-500">{t('publicChatAiAssistant')}</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg font-semibold text-gray-900">{kb.name}</h1>
-              <p className="text-sm text-gray-500">AI 助手</p>
+            
+            {/* 右侧：语言切换器 */}
+            {/* 1.2.28: 顶部导航栏的语言切换器向下弹出 */}
+            <div className="flex items-center">
+              <LanguageSwitcher direction="down" />
             </div>
           </div>
         </div>
       </div>
 
       {/* 聊天界面 */}
+      {/* 1.2.25: 传递知识库对象和公开模式标志，使聊天界面能够正确显示欢迎语和高频问题 */}
+      {/* 1.2.28: 传递当前语言状态 */}
       <div className="h-[calc(100vh-80px)]">
-        <ChatInterface language="zh" />
+        <ChatInterface language={currentLang} externalKb={kb} isPublicMode={true} />
       </div>
     </div>
   );

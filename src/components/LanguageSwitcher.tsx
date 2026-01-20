@@ -19,7 +19,12 @@ const languages: Language[] = [
   { code: 'ja', label: '日本語', flag: '🇯🇵' },
 ];
 
-export function LanguageSwitcher() {
+// 1.2.28: 添加 direction prop 控制下拉菜单弹出方向
+interface LanguageSwitcherProps {
+  direction?: 'up' | 'down'; // 下拉菜单方向：up=向上弹出，down=向下弹出
+}
+
+export function LanguageSwitcher({ direction = 'up' }: LanguageSwitcherProps) {
   const { i18n, t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -83,8 +88,11 @@ export function LanguageSwitcher() {
 
       {/* Dropdown Menu */}
       {/* 1.0.4: 下拉菜单显示在按钮右上方 */}
+      {/* 1.2.28: 根据 direction prop 控制弹出方向 */}
       {isOpen && (
-        <div className="absolute right-0 bottom-full mb-2 w-52 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-50">
+        <div className={`absolute right-0 w-52 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-50 ${
+          direction === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'
+        }`}>
           {languages.map((lang) => {
             const isSelected = lang.code === currentLang.code;
             return (

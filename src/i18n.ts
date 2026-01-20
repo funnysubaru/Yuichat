@@ -119,6 +119,7 @@ const resources = {
       references: '参考资料：',
       page: '页',
       sendMessageFailed: '发送消息失败',
+      aiThinking: 'AI正在思考中', // 1.2.27
       
       // Knowledge Base Page
       noData: '暂无数据',
@@ -172,6 +173,21 @@ const resources = {
       // Language Switcher
       switchLanguage: '切换语言',
       
+      // 1.2.26: Conversation History
+      conversationHistory: '对话记录',
+      newConversation: '新增对话',
+      noConversations: '暂无对话记录',
+      deleteConversation: '删除对话',
+      deleteConversationConfirm: '确定要删除这个对话吗？此操作不可恢复。',
+      collapseConversations: '收起',
+      loadConversationsFailed: '加载对话记录失败',
+      createConversationFailed: '创建新对话失败',
+      loadConversationFailed: '加载对话失败',
+      deleteConversationSuccess: '删除成功',
+      deleteConversationFailed: '删除失败',
+      pleaseSelectProject: '请先选择项目',
+      pleaseLogin: '请先登录',
+      
       // Share Page
       shareDescription: '生成一个公开的聊天链接，让您的用户直接与 AI 助手对话。',
       shareLinkSettings: '分享链接设置',
@@ -194,6 +210,19 @@ const resources = {
       shareInstruction3: '所有对话数据将归档在"对话数据"中。',
       securityNotice: '安全提示',
       securityNoticeText: '请妥善保管您的分享链接。虽然用户无法修改您的项目，但他们可以访问项目中所有文档的公开信息。',
+      
+      // 1.2.28: Public Chat Page
+      publicChatLoading: '加载中...',
+      publicChatAccessFailed: '访问失败',
+      publicChatInvalidLink: '该分享链接无效或已失效',
+      publicChatContactOwner: '请联系分享者获取新的链接，或检查链接是否完整。',
+      publicChatAiAssistant: 'AI 助手',
+      
+      // 1.2.28: Default Questions
+      defaultQuestion1: '您能介绍一下这个项目吗？',
+      defaultQuestion2: '有哪些常见问题？',
+      defaultQuestion3: '如何使用这个系统？',
+      aiGeneratedDisclaimer: '以上内容由AI生成，不代表开发者立场',
     }
   },
   ja: {
@@ -302,6 +331,7 @@ const resources = {
       references: '参考資料：',
       page: 'ページ',
       sendMessageFailed: 'メッセージの送信に失敗しました',
+      aiThinking: 'AIが考え中', // 1.2.27
       
       // Knowledge Base Page
       noData: 'データがありません',
@@ -354,6 +384,34 @@ const resources = {
       
       // Language Switcher
       switchLanguage: '言語を切り替え',
+      
+      // 1.2.26: Conversation History
+      conversationHistory: '会話履歴',
+      newConversation: '新しい会話',
+      noConversations: '会話履歴がありません',
+      deleteConversation: '会話を削除',
+      deleteConversationConfirm: 'この会話を削除してもよろしいですか？この操作は元に戻せません。',
+      collapseConversations: '閉じる',
+      loadConversationsFailed: '会話履歴の読み込みに失敗しました',
+      createConversationFailed: '新しい会話の作成に失敗しました',
+      loadConversationFailed: '会話の読み込みに失敗しました',
+      deleteConversationSuccess: '削除成功',
+      deleteConversationFailed: '削除失敗',
+      pleaseSelectProject: 'プロジェクトを選択してください',
+      pleaseLogin: 'ログインしてください',
+      
+      // 1.2.28: Public Chat Page
+      publicChatLoading: '読み込み中...',
+      publicChatAccessFailed: 'アクセス失敗',
+      publicChatInvalidLink: 'この共有リンクは無効または期限切れです',
+      publicChatContactOwner: '共有者に新しいリンクを取得するか、リンクが完全であることを確認してください。',
+      publicChatAiAssistant: 'AIアシスタント',
+      
+      // 1.2.28: Default Questions
+      defaultQuestion1: 'このプロジェクトについて紹介していただけますか？',
+      defaultQuestion2: 'よくある質問は何ですか？',
+      defaultQuestion3: 'このシステムの使い方は？',
+      aiGeneratedDisclaimer: '上記の内容はAIによって生成されており、開発者の立場を代表するものではありません',
     }
   },
   en: {
@@ -462,6 +520,7 @@ const resources = {
       references: 'References:',
       page: 'Page',
       sendMessageFailed: 'Failed to send message',
+      aiThinking: 'AI is thinking', // 1.2.27
       
       // Knowledge Base Page
       noData: 'No data',
@@ -514,6 +573,34 @@ const resources = {
       
       // Language Switcher
       switchLanguage: 'Switch Language',
+      
+      // 1.2.26: Conversation History
+      conversationHistory: 'Conversation History',
+      newConversation: 'New Conversation',
+      noConversations: 'No conversations',
+      deleteConversation: 'Delete Conversation',
+      deleteConversationConfirm: 'Are you sure you want to delete this conversation? This action cannot be undone.',
+      collapseConversations: 'Collapse',
+      loadConversationsFailed: 'Failed to load conversations',
+      createConversationFailed: 'Failed to create new conversation',
+      loadConversationFailed: 'Failed to load conversation',
+      deleteConversationSuccess: 'Deleted successfully',
+      deleteConversationFailed: 'Delete failed',
+      pleaseSelectProject: 'Please select a project',
+      pleaseLogin: 'Please login',
+      
+      // 1.2.28: Public Chat Page
+      publicChatLoading: 'Loading...',
+      publicChatAccessFailed: 'Access Failed',
+      publicChatInvalidLink: 'This share link is invalid or has expired',
+      publicChatContactOwner: 'Please contact the sharer for a new link, or check if the link is complete.',
+      publicChatAiAssistant: 'AI Assistant',
+      
+      // 1.2.28: Default Questions
+      defaultQuestion1: 'Can you introduce this project?',
+      defaultQuestion2: 'What are the common questions?',
+      defaultQuestion3: 'How to use this system?',
+      aiGeneratedDisclaimer: 'The above content is generated by AI and does not represent the developer\'s position',
     }
   }
 };
