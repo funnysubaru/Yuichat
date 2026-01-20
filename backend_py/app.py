@@ -63,7 +63,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "YUIChat API",
-        "version": "1.2.38"
+        "version": "1.2.39"
     }
 
 @fastapi_app.post("/api/process-file")
