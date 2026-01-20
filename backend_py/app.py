@@ -12,6 +12,8 @@ import json  # 1.2.24: 用于 SSE 数据格式化
 import logging  # 1.2.36: 添加日志模块，用于生产环境错误记录
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from cachetools import TTLCache  # 1.2.39: 高频问题缓存
+import asyncio  # 1.2.39: 并行处理
 
 # 1.2.39: 优先加载 .env.local，然后加载 .env（如果存在）
 load_dotenv('.env.local')  # 本地开发配置优先
@@ -23,6 +25,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# 1.2.39: 高频问题缓存 - TTL 为 6 小时，最多缓存 1000 个结果
+# 缓存键格式: f"{kb_token}:{language}"
+frequent_questions_cache = TTLCache(maxsize=1000, ttl=21600)
 
 # 1.1.2: 初始化 Supabase 客户端（用于查询 vector_collection）
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -37,7 +43,7 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
 fastapi_app = FastAPI(
     title="YUIChat API",
     description="YUIChat 后端 API，提供知识库管理和聊天功能",
-    version="1.2.38"
+    version="1.2.39"
 )
 
 # 1.2.24: 添加 CORS 中间件，允许前端访问
@@ -812,6 +818,7 @@ async def get_chat_config(request: Request):
 # 1.2.11: 基于文档生成常见问题，确保每个问题都有回复
 # 1.2.12: 改为POST请求，避免Chainlit拦截GET请求
 # 1.2.36: 改进错误处理和日志记录，确保生产环境也能追踪问题
+# 1.2.39: 性能优化 - 添加缓存、并行处理、使用更快模型
 @fastapi_app.post("/api/frequent-questions")
 async def get_frequent_questions(request: Request):
     """
@@ -819,6 +826,7 @@ async def get_frequent_questions(request: Request):
     1.2.11: 基于上传的文档生成问题，并确保每个问题都有回复
     1.2.12: 改为POST请求，避免Chainlit拦截GET请求
     1.2.36: 改进错误处理和日志记录，确保生产环境也能追踪问题
+    1.2.39: 性能优化 - 缓存(6h)、并行embedding、gpt-4o-mini、并行验证
     """
     # 1.2.36: 使用 logger 记录 API 调用（生产环境也会记录）
     logger.info("API called: /api/frequent-questions")
@@ -846,24 +854,41 @@ async def get_frequent_questions(request: Request):
         if language not in ["zh", "en", "ja"]:
             language = "zh"
         
+        # 1.2.39: 检查缓存
+        cache_key = f"{kb_token}:{language}"
+        if cache_key in frequent_questions_cache:
+            cached_questions = frequent_questions_cache[cache_key]
+            logger.info(f"Cache hit for kb_token: {kb_token}, language: {language}")
+            if os.getenv("ENV") == "development":
+                print(f"✅ DEBUG: Cache hit, returning cached questions")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "questions": cached_questions,
+                    "cached": True  # 1.2.39: 标记为缓存结果
+                },
+                headers={"Content-Type": "application/json"}
+            )
+        
         logger.info(f"Processing frequent questions request for kb_token: {kb_token}, language: {language}")
         
         # 1.2.11: 从 Supabase 获取 vector_collection
         # 1.2.36: 改进错误日志记录
-        # 1.2.38: 支持通过 id 或 share_token 查询
+        # 1.2.40: 简化查询逻辑，支持通过 id 或 share_token 查询
         collection_name = None
         if supabase:
             try:
-                # 1.2.38: 首先尝试通过 share_token 查询（使用 limit(1) 避免 single() 抛出异常）
+                # 1.2.39: 支持通过 id 或 share_token 查询（兼容前端传递 project id）
+                # 先尝试通过 share_token 查询
                 result = supabase.table("knowledge_bases")\
                     .select("vector_collection")\
                     .eq("share_token", kb_token)\
                     .limit(1)\
                     .execute()
                 
-                # 1.2.38: 如果 share_token 查询失败，尝试通过 id 查询
+                # 如果通过 share_token 未找到，尝试通过 id 查询
                 if not result.data or len(result.data) == 0:
-                    logger.info(f"share_token query returned no data, trying id query for: {kb_token}")
                     result = supabase.table("knowledge_bases")\
                         .select("vector_collection")\
                         .eq("id", kb_token)\
@@ -958,10 +983,21 @@ async def get_frequent_questions(request: Request):
                     collection = vx.get_collection(name=collection_name)
                     embeddings_model = OpenAIEmbeddings()
                     
+                    # 1.2.39: 并行生成所有查询词的 embeddings
+                    query_words_to_use = query_words[:3]  # 只使用前3个查询词
+                    if os.getenv("ENV") == "development":
+                        print(f"🔍 DEBUG: Parallel embedding {len(query_words_to_use)} query words")
+                    
+                    # 并行调用 embed_query
+                    query_vectors = await asyncio.gather(*[
+                        asyncio.to_thread(embeddings_model.embed_query, word)
+                        for word in query_words_to_use
+                    ])
+                    
                     # 对每个查询词检索文档
                     all_results = []
-                    for query_word in query_words[:3]:  # 只使用前3个查询词
-                        query_vector = embeddings_model.embed_query(query_word)
+                    for idx, query_word in enumerate(query_words_to_use):
+                        query_vector = query_vectors[idx]
                         # 1.2.39: vecs 0.4.5 API: data 替代 query_vector
                         results = collection.query(
                             data=query_vector,
@@ -989,7 +1025,7 @@ async def get_frequent_questions(request: Request):
                     sample_docs = list(dict.fromkeys(all_results))[:10]  # 最多10个文档片段
                     logger.info(f"Retrieved {len(sample_docs)} valid documents from pgvector for collection: {collection_name}")
                     if os.getenv("ENV") == "development":
-                        print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from pgvector")
+                        print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from pgvector (parallel)")
                 except Exception as e:
                     logger.error(f"pgvector query failed for collection {collection_name}: {str(e)}", exc_info=True)
                     logger.warning(f"Falling back to Chroma for collection: {collection_name}")
@@ -1067,8 +1103,8 @@ async def get_frequent_questions(request: Request):
             # 构建上下文
             context = "\n\n".join(sample_docs[:5])  # 最多使用5个文档片段
             
-            # 使用LLM生成问题
-            llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+            # 1.2.39: 使用更快的模型 gpt-4o-mini
+            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
             
             prompts = {
                 "zh": """基于以下文档内容，生成3个用户最可能问的常见问题。
@@ -1137,7 +1173,7 @@ XXXにはどのような特徴がありますか？
                 if os.getenv("ENV") == "development":
                     print(f"🔍 DEBUG: Generating questions with LLM, context length: {len(context)}")
                 # 1.2.24: 移除 cl.make_async，使用 asyncio.to_thread 处理同步调用
-                import asyncio
+                # 1.2.39: asyncio 已在文件顶部导入，无需重复导入
                 response = await asyncio.to_thread(llm.invoke, prompt.format(context=context))
                 generated_text = response.content.strip()
                 if os.getenv("ENV") == "development":
@@ -1176,21 +1212,38 @@ XXXにはどのような特徴がありますか？
                     print(f"🔍 DEBUG: Parsed {len(questions)} questions: {questions}")
                 
                 # 1.2.11: 验证每个问题是否有回复（通过快速检索测试）
-                valid_questions = []
+                # 1.2.39: 优化验证 - 并行处理 + 批量 embedding + 复用连接
                 embeddings_model = OpenAIEmbeddings()
+                questions_to_validate = questions[:5]  # 1.2.39: 只验证前5个问题
                 
-                for question in questions[:10]:  # 检查更多问题，确保能找到3个有效的
+                if os.getenv("ENV") == "development":
+                    print(f"🔍 DEBUG: Validating {len(questions_to_validate)} questions in parallel")
+                
+                # 1.2.39: 批量生成所有问题的 embeddings（一次 API 调用）
+                question_vectors = await asyncio.to_thread(
+                    embeddings_model.embed_documents, 
+                    questions_to_validate
+                )
+                
+                # 1.2.39: 复用数据库连接（只创建一次）
+                vx = None
+                collection = None
+                if USE_PGVECTOR and DATABASE_URL:
                     try:
-                        # 快速检索测试：检查是否能找到相关文档
+                        vx = vecs.create_client(DATABASE_URL)
+                        collection = vx.get_collection(name=collection_name)
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize pgvector connection: {e}")
+                
+                # 定义验证单个问题的函数
+                async def validate_single_question(question, query_vector):
+                    """验证单个问题是否能找到有效文档"""
+                    try:
                         found_doc = False
-                        use_chroma_fallback = False  # 1.2.39: 标记是否需要回退到 Chroma
+                        use_chroma_fallback = False
                         
-                        if USE_PGVECTOR and DATABASE_URL:
+                        if collection:
                             try:
-                                vx = vecs.create_client(DATABASE_URL)
-                                collection = vx.get_collection(name=collection_name)
-                                query_vector = embeddings_model.embed_query(question)
-                                # 1.2.39: vecs 0.4.5 API: data 替代 query_vector
                                 results = collection.query(
                                     data=query_vector,
                                     limit=1,
@@ -1198,10 +1251,8 @@ XXXにはどのような特徴がありますか？
                                     include_metadata=True
                                 )
                                 if results and len(results) > 0:
-                                    # 检查结果是否有效（不是错误文档）
                                     record = results[0]
-                                    # 1.2.39: vecs 返回格式: (id, metadata)
-                                    if len(record) > 1 and record[1]:  # 确保索引存在且有metadata
+                                    if len(record) > 1 and record[1]:
                                         text = record[1].get("text", "")
                                         metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
                                         is_error = (
@@ -1214,17 +1265,17 @@ XXXにはどのような特徴がありますか？
                                         if not is_error and text.strip() and len(text.strip()) > 50:
                                             found_doc = True
                                     else:
-                                        use_chroma_fallback = True  # 结果格式不对，回退到 Chroma
+                                        use_chroma_fallback = True
                                 else:
-                                    use_chroma_fallback = True  # 没有结果，回退到 Chroma
+                                    use_chroma_fallback = True
                             except Exception as e:
                                 if os.getenv("ENV") == "development":
                                     print(f"⚠️ pgvector validation error for '{question}': {e}")
-                                use_chroma_fallback = True  # 1.2.39: pgvector 失败，回退到 Chroma
+                                use_chroma_fallback = True
                         else:
                             use_chroma_fallback = True
                         
-                        # 1.2.39: 如果需要回退到 Chroma
+                        # Chroma 回退
                         if use_chroma_fallback and not found_doc:
                             try:
                                 vectorstore = Chroma(
@@ -1232,9 +1283,8 @@ XXXにはどのような特徴がありますか？
                                     embedding_function=OpenAIEmbeddings()
                                 )
                                 retriever = vectorstore.as_retriever(search_kwargs={"k": 1})
-                                docs = retriever.invoke(question)
+                                docs = await asyncio.to_thread(retriever.invoke, question)
                                 if docs and len(docs) > 0:
-                                    # 检查文档是否有效
                                     doc = docs[0]
                                     is_error = (
                                         'error' in doc.metadata or 
@@ -1247,27 +1297,39 @@ XXXにはどのような特徴がありますか？
                                 if os.getenv("ENV") == "development":
                                     print(f"⚠️ Chroma validation error for '{question}': {e}")
                         
-                        # 只有找到有效文档才添加问题
                         if found_doc:
-                            valid_questions.append(question)
                             if os.getenv("ENV") == "development":
                                 print(f"✅ DEBUG: Question validated: {question}")
-                            if len(valid_questions) >= 3:
-                                break
+                            return question
                         else:
                             if os.getenv("ENV") == "development":
                                 print(f"⚠️ DEBUG: Question has no valid reply: {question}")
+                            return None
                     except Exception as e:
                         if os.getenv("ENV") == "development":
                             print(f"⚠️ Failed to validate question '{question}': {e}")
-                        # 验证失败时不添加问题，确保只返回有回复的问题
+                        return None
+                
+                # 1.2.39: 并行验证所有问题
+                validation_results = await asyncio.gather(*[
+                    validate_single_question(q, qv) 
+                    for q, qv in zip(questions_to_validate, question_vectors)
+                ])
+                
+                # 过滤出有效问题
+                valid_questions = [q for q in validation_results if q is not None]
                 
                 if len(valid_questions) >= 3:
+                    # 1.2.39: 保存到缓存
+                    result_questions = valid_questions[:3]
+                    frequent_questions_cache[cache_key] = result_questions
+                    logger.info(f"Cached {len(result_questions)} questions for kb_token: {kb_token}, language: {language}")
+                    
                     return JSONResponse(
                         status_code=200,
                         content={
                             "status": "success",
-                            "questions": valid_questions[:3]
+                            "questions": result_questions
                         },
                         headers={"Content-Type": "application/json"}
                     )
@@ -1281,11 +1343,17 @@ XXXにはどのような特徴がありますか？
                     default_qs = default_questions.get(language, default_questions["zh"])
                     # 合并有效问题和默认问题
                     final_questions = valid_questions + [q for q in default_qs if q not in valid_questions]
+                    result_questions = final_questions[:3]
+                    
+                    # 1.2.39: 保存到缓存（即使是部分生成+默认问题的组合）
+                    frequent_questions_cache[cache_key] = result_questions
+                    logger.info(f"Cached {len(result_questions)} questions (partial) for kb_token: {kb_token}, language: {language}")
+                    
                     return JSONResponse(
                         status_code=200,
                         content={
                             "status": "success",
-                            "questions": final_questions[:3]
+                            "questions": result_questions
                         },
                         headers={"Content-Type": "application/json"}
                     )
