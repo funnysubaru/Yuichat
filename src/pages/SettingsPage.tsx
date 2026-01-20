@@ -61,7 +61,7 @@ export function SettingsPage() {
 
         if (error) {
           logger.error('Error loading knowledge base:', error);
-          toast.error('项目不存在或无权访问');
+          toast.error(t('projectAccessDenied'));
         } else {
           setKb(data);
           setName(data.name || '');
@@ -116,12 +116,12 @@ export function SettingsPage() {
       const ext = file.name.split('.').pop()?.toLowerCase();
       const allowedTypes = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
       if (!ext || !allowedTypes.includes(ext)) {
-        toast.error('请上传图片文件（png, jpg, jpeg, gif, webp）');
+        toast.error(t('invalidImageType'));
         return;
       }
       // 验证文件大小（2MB）
       if (file.size > 2 * 1024 * 1024) {
-        toast.error('头像文件大小不能超过2MB');
+        toast.error(t('imageSizeTooLarge'));
         return;
       }
       setAvatarFile(file);
@@ -158,7 +158,7 @@ export function SettingsPage() {
         const previewUrl = URL.createObjectURL(file);
         setAvatarPreview(previewUrl);
       } else {
-        toast.error('请上传有效的图片文件（不超过2MB）');
+        toast.error(t('invalidImageFile'));
       }
     }
   };
@@ -195,7 +195,7 @@ export function SettingsPage() {
   const handleAddQuestion = (lang: 'zh' | 'en' | 'ja') => {
     const questions = chatConfig.recommended_questions[lang] || [];
     if (questions.length >= 3) {
-      toast.error('每种语言最多只能添加3个推荐问题');
+      toast.error(t('maxQuestionsReached'));
       return;
     }
     setChatConfig({
@@ -259,12 +259,12 @@ export function SettingsPage() {
 
       if (error) throw error;
       
-      toast.success('设置已保存');
+      toast.success(t('settingsSaved'));
       setKb({ ...kb, name, description, chat_config: { ...chatConfig, avatar_url: avatarUrl } });
       setAvatarFile(null); // 清除待上传文件
     } catch (error) {
       logger.error('Error saving settings:', error);
-      toast.error('保存失败，请重试');
+      toast.error(t('settingsSaveFailed'));
     } finally {
       setSaving(false);
     }
@@ -283,8 +283,8 @@ export function SettingsPage() {
       <div className="p-8 text-center">
         <div className="bg-purple-50 rounded-xl p-12 max-w-lg mx-auto border border-purple-100">
           <Settings className="w-16 h-16 text-purple-300 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">项目不存在</h2>
-          <p className="text-gray-600">请先创建一个项目</p>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">{t('projectNotFound')}</h2>
+          <p className="text-gray-600">{t('pleaseCreateProjectFirst')}</p>
         </div>
       </div>
     );
@@ -292,10 +292,10 @@ export function SettingsPage() {
 
   // 1.2.5: Tab配置
   const tabs = [
-    { id: 'project-info' as TabType, label: '项目信息', icon: FileText },
-    { id: 'digital-employee' as TabType, label: '数字员工', icon: User },
-    { id: 'conversation' as TabType, label: '对话设置', icon: MessageSquare },
-    { id: 'skills' as TabType, label: '技能设置', icon: Brain, badge: 'Beta' },
+    { id: 'project-info' as TabType, label: t('tabProjectInfo'), icon: FileText },
+    { id: 'digital-employee' as TabType, label: t('tabDigitalEmployee'), icon: User },
+    { id: 'conversation' as TabType, label: t('tabConversation'), icon: MessageSquare },
+    { id: 'skills' as TabType, label: t('tabSkills'), icon: Brain, badge: 'Beta' },
   ];
 
   return (
@@ -304,7 +304,7 @@ export function SettingsPage() {
       <div className="bg-white border-b border-gray-200 px-8 pt-8 flex-shrink-0 z-10">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('projectSettings')}</h1>
-          <p className="text-gray-600">管理项目的基本信息</p>
+          <p className="text-gray-600">{t('projectSettingsDescription')}</p>
         </div>
         
         {/* 1.2.5: Tab导航栏 */}
@@ -350,8 +350,8 @@ export function SettingsPage() {
                   <Settings className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">项目信息</h3>
-                  <p className="text-sm text-gray-500">修改项目名称和描述</p>
+                  <h3 className="font-semibold text-gray-900">{t('tabProjectInfo')}</h3>
+                  <p className="text-sm text-gray-500">{t('modifyProjectInfo')}</p>
                 </div>
               </div>
             </div>
@@ -359,27 +359,27 @@ export function SettingsPage() {
             <div className="p-6 space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  项目名称
+                  {t('projectName')}
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="请输入项目名称"
+                  placeholder={t('projectNamePlaceholder')}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  项目描述
+                  {t('projectDescription')}
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={4}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="请输入项目描述"
+                  placeholder={t('projectDescriptionPlaceholder')}
                 />
               </div>
 
@@ -392,12 +392,12 @@ export function SettingsPage() {
                   {saving ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      保存中...
+                      {t('saving')}
                     </>
                   ) : (
                     <>
                       <Save className="w-4 h-4" />
-                      保存
+                      {t('save')}
                     </>
                   )}
                 </button>
@@ -416,13 +416,13 @@ export function SettingsPage() {
                     <User className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">数字员工</h3>
-                    <p className="text-sm text-gray-500">配置数字员工的基本信息和形象</p>
+                    <h3 className="font-semibold text-gray-900">{t('tabDigitalEmployee')}</h3>
+                    <p className="text-sm text-gray-500">{t('digitalEmployeeConfig')}</p>
                   </div>
                 </div>
                 <button className="px-4 py-2 text-primary hover:bg-primary/10 rounded-lg transition-colors flex items-center gap-2">
                   <Settings className="w-4 h-4" />
-                  编辑
+                  {t('edit')}
                 </button>
               </div>
             </div>
@@ -431,7 +431,7 @@ export function SettingsPage() {
               {/* 1.2.5: 数字员工配置内容待实现 */}
               <div className="text-center py-12 text-gray-500">
                 <User className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p>数字员工配置功能开发中...</p>
+                <p>{t('digitalEmployeeDeveloping')}</p>
               </div>
             </div>
           </div>
@@ -446,15 +446,15 @@ export function SettingsPage() {
                 <MessageSquare className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">对话设置</h3>
-                <p className="text-sm text-gray-500">配置AI头像、欢迎语和推荐问题</p>
+                <h3 className="font-semibold text-gray-900">{t('tabConversation')}</h3>
+                <p className="text-sm text-gray-500">{t('conversationConfig')}</p>
               </div>
             </div>
 
             {/* AI头像上传 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              AI头像
+              {t('aiAvatar')}
             </label>
             <div className="flex items-start gap-4">
               {/* 头像预览 */}
@@ -491,10 +491,10 @@ export function SettingsPage() {
                   <div className="text-center">
                     <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-600">
-                      点击或拖拽图片到此处上传
+                      {t('clickOrDragUpload')}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
-                      支持 PNG、JPG、JPEG、GIF、WEBP，最大2MB
+                      {t('avatarUploadHint')}
                     </p>
                   </div>
                 </div>
@@ -512,7 +512,7 @@ export function SettingsPage() {
           {/* 欢迎语（多语言） */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              欢迎语（多语言）
+              {t('welcomeMessageMultiLang')}
             </label>
             <div className="space-y-4">
               {(['zh', 'en', 'ja'] as const).map((lang) => (
@@ -541,7 +541,7 @@ export function SettingsPage() {
           {/* 推荐问题（多语言） */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              推荐问题（多语言，最多3个）
+              {t('recommendedQuestionsMultiLang')}
             </label>
             <div className="space-y-4">
               {(['zh', 'en', 'ja'] as const).map((lang) => (
@@ -557,7 +557,7 @@ export function SettingsPage() {
                         className="text-xs text-primary hover:text-primary-dark flex items-center gap-1"
                       >
                         <Plus className="w-3 h-3" />
-                        添加问题
+                        {t('addQuestion')}
                       </button>
                     )}
                   </div>
@@ -569,7 +569,7 @@ export function SettingsPage() {
                           value={question}
                           onChange={(e) => handleQuestionChange(lang, index, e.target.value)}
                           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                          placeholder={`问题 ${index + 1}`}
+                          placeholder={t('questionIndex', { index: index + 1 })}
                         />
                         <button
                           type="button"
@@ -596,12 +596,12 @@ export function SettingsPage() {
               {saving ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  保存中...
+                  {t('saving')}
                 </>
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  保存配置
+                  {t('saveConfig')}
                 </>
               )}
             </button>
@@ -618,8 +618,8 @@ export function SettingsPage() {
                   <Brain className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">技能设置</h3>
-                  <p className="text-sm text-gray-500">配置AI的技能和能力</p>
+                  <h3 className="font-semibold text-gray-900">{t('tabSkills')}</h3>
+                  <p className="text-sm text-gray-500">{t('skillsConfig')}</p>
                 </div>
               </div>
             </div>
@@ -628,7 +628,7 @@ export function SettingsPage() {
               {/* 1.2.5: 技能设置内容待实现 */}
               <div className="text-center py-12 text-gray-500">
                 <Brain className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p>技能设置功能开发中...</p>
+                <p>{t('skillsDeveloping')}</p>
               </div>
             </div>
           </div>

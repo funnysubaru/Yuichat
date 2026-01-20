@@ -193,3 +193,78 @@ export function onAuthStateChange(
   };
 }
 
+/**
+ * Update user profile (display name, etc.)
+ * 1.2.29: 添加用户资料更新功能
+ */
+export async function updateUserProfile(
+  updates: { full_name?: string; [key: string]: any }
+): Promise<{ error: AuthError | null }> {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      data: updates,
+    });
+
+    if (error) {
+      return {
+        error: {
+          message: error.message,
+          code: error.status?.toString(),
+        },
+      };
+    }
+
+    return { error: null };
+  } catch (error: any) {
+    return {
+      error: {
+        message: error.message || '更新资料失败，请重试',
+      },
+    };
+  }
+}
+
+/**
+ * Update user password
+ * 1.2.29: 添加密码更新功能
+ */
+export async function updateUserPassword(
+  newPassword: string
+): Promise<{ error: AuthError | null }> {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      return {
+        error: {
+          message: error.message,
+          code: error.status?.toString(),
+        },
+      };
+    }
+
+    return { error: null };
+  } catch (error: any) {
+    return {
+      error: {
+        message: error.message || '更新密码失败，请重试',
+      },
+    };
+  }
+}
+
+/**
+ * Get user authentication providers
+ * 1.2.29: 获取用户的登录方式（email, google 等）
+ */
+export function getUserProviders(user: User): string[] {
+  if (!user) return [];
+  
+  // 从 app_metadata 或 identities 获取提供商信息
+  const identities = user.identities || [];
+  const providers = identities.map(identity => identity.provider);
+  
+  return providers;
+}

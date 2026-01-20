@@ -1,5 +1,232 @@
 # Changelog
 
+## 1.2.34 (2026-01-20)
+
+### 国际化 (i18n)
+
+- 🌐 **补全项目设置页面多语言内容**：
+  - 为“项目设置”页面及其所有标签页（项目信息、数字员工、对话设置、技能设置）提供了完整的中文、英文和日文翻译。
+  - 移除了页面中硬编码的中文文本，统一使用 i18n 管理。
+  - 完善了设置页面的错误提示、占位符及加载状态的多语言显示。
+
+## 1.2.33 (2026-01-20)
+
+### 国际化 (i18n)
+
+- 🌐 **补全外部分享页面多语言内容**：
+  - 补全了“外部分享”页面的英文和日文翻译。
+  - 完善了公共聊天页面和默认问题的多语言支持。
+  - 确保分享链接、重置逻辑及安全提示在各语言下显示一致。
+
+## 1.2.32 (2026-01-20)
+
+### 功能增强
+
+- 🌐 **意见反馈表单多语言支持**：
+  - 支持根据应用当前语言自动切换 Google Form 表单
+  - 为中文、英文、日文分别配置独立的表单链接
+  - 用户切换应用语言时，反馈表单内容同步切换
+  - 提供纯净的单一语言用户体验
+
+### 技术改进
+
+- 📋 **FeedbackPage 组件优化**：
+  - 使用 `i18n.language` 动态获取当前语言
+  - 通过 `formUrls` 对象映射不同语言的表单链接
+  - 支持语言回退机制（默认使用中文表单）
+  - 代码结构清晰，易于维护和扩展
+
+### 文档更新
+
+- 📝 **Google Form 配置指南更新**：
+  - 添加多语言支持说明和原理
+  - 提供创建多语言表单的详细步骤
+  - 包含中英日三种语言的表单模板示例
+  - 说明如何配置代码和测试多语言切换
+
+### 配置说明
+
+所有三种语言的表单已全部配置完成：
+
+```typescript
+const formUrls = {
+  ja: 'https://docs.google.com/forms/d/e/1FAIpQLSeke9qiUUCD7llMwo5w0ulpiiXX798o0M3_Tmx65KALDJ3FHw/viewform?embedded=true', // ✅ 日文表单
+  zh: 'https://docs.google.com/forms/d/e/1FAIpQLSdO4-BycxG0tq6_mwTuGsrjwRbFFSrNasoo-96-LGeFYm5RUQ/viewform?embedded=true', // ✅ 中文表单
+  en: 'https://docs.google.com/forms/d/e/1FAIpQLSeWLbDOU5ij5RUCuKI8_Elgi_ml5MCBUxAI0qTRV4w92xVSZw/viewform?embedded=true', // ✅ 英文表单
+};
+```
+
+**表单详情**：
+- 日文表单：YUIChatご意見 - 包含 Email 和意见描述字段
+- 中文表单：YUIChat 用户反馈 - 包含 Email 和意见字段
+- 英文表单：YUIChat User Feedback - 包含 Email 和 comment 字段
+
+### 文件变更
+
+- 修改文件：
+  - `src/pages/FeedbackPage.tsx`：添加多语言表单支持
+  - `docs/GOOGLE_FORM_SETUP.md`：添加多语言配置指南和模板
+
+## 1.2.31 (2026-01-20)
+
+### 功能增强
+
+- 🎨 **优化侧边栏用户名显示逻辑**：
+  - 邮箱登录用户：显示邮箱前缀（如 `tiancaifuang@gmail.com` 显示为 `tiancaifuang`）
+  - 第三方登录用户（如 Google）：显示第三方账号的真实姓名
+  - 自动识别登录方式，动态显示合适的用户名
+  - 优先使用 `full_name` 或 `name` 字段（来自 user_metadata）
+
+- 📝 **配置 Google Form 意见反馈表单**：
+  - 集成实际的 Google Form 表单到意见反馈页面
+  - 表单 ID: `1FAIpQLSeke9qiUUCD7llMwo5w0ulpiiXX798o0M3_Tmx65KALDJ3FHw`
+  - 用户可以直接在应用内提交反馈意见
+  - 表单包含邮箱和意见描述字段
+
+### 技术改进
+
+- 🔧 **Sidebar 组件优化**：
+  - 导入 `getUserProviders` 函数用于判断登录方式
+  - 新增 `getDisplayName()` 辅助函数，智能获取显示名称
+  - 根据 `user.identities` 判断是邮箱登录还是第三方登录
+  - 完善用户名显示逻辑，提升用户体验
+
+- 📋 **FeedbackPage 配置**：
+  - 更新 Google Form URL 为实际的表单链接
+  - 使用 `embedded=true` 参数确保表单正确嵌入
+  - 表单高度设置为 800px，提供良好的浏览体验
+
+### 文件变更
+
+- 修改文件：
+  - `src/components/Sidebar.tsx`：优化用户名显示逻辑
+  - `src/pages/FeedbackPage.tsx`：配置实际的 Google Form 链接
+
+## 1.2.30 (2026-01-20)
+
+### 功能增强
+
+- ✨ **账号中心功能**：
+  - 新增账号中心页面，路由为 `/account`
+  - 显示用户基本信息：显示名称、邮箱、登录方式
+  - 支持修改显示名称（用户名）
+  - 支持修改密码（仅邮箱登录用户）
+  - 第三方登录（如 Google）用户显示登录方式，不显示密码修改选项
+  - 友好的用户提示和错误处理
+  - 实时表单验证和成功/失败反馈
+
+- 📝 **意见反馈功能**：
+  - 新增意见反馈页面，路由为 `/feedback`
+  - 嵌入 Google Form 表单（需配置实际的 Google Form 链接）
+  - 响应式设计，适配不同屏幕尺寸
+  - 多语言支持的提示信息
+
+### 技术改进
+
+- 🔧 **认证服务扩展** (`authService.ts`)：
+  - 新增 `updateUserProfile` 函数：更新用户资料
+  - 新增 `updateUserPassword` 函数：更新用户密码
+  - 新增 `getUserProviders` 函数：获取用户登录方式（email/google等）
+  - 完善错误处理和类型定义
+
+- 🎨 **页面组件**：
+  - `AccountCenterPage.tsx`：账号中心页面，包含完整的表单验证和状态管理
+  - `FeedbackPage.tsx`：意见反馈页面，使用 iframe 嵌入 Google Form
+  - 两个页面都包含返回按钮，提升用户体验
+
+- 🔀 **路由更新**：
+  - 在 `App.tsx` 中添加 `/account` 和 `/feedback` 路由
+  - 在 `Sidebar.tsx` 中更新用户菜单的跳转逻辑
+
+### 国际化
+
+- 🌐 **新增多语言支持**：
+  - 中文：账号中心相关文案（基本信息、显示名称、修改密码等）
+  - 英文：Account Center related text
+  - 日文：アカウントセンター関連テキスト
+  - 反馈页面多语言支持
+
+### 用户体验
+
+- 💡 **密码修改安全提示**：
+  - 密码长度验证（至少6个字符）
+  - 两次密码输入一致性验证
+  - 密码可见性切换（显示/隐藏）
+  - 第三方登录用户的友好提示
+
+- 📋 **表单状态管理**：
+  - 加载状态显示
+  - 保存中状态禁用按钮
+  - 成功/失败消息实时反馈
+  - 自动清空密码输入框（更新成功后）
+
+### 文件变更
+
+- 新增文件：
+  - `src/pages/AccountCenterPage.tsx`：账号中心页面
+  - `src/pages/FeedbackPage.tsx`：意见反馈页面
+
+- 修改文件：
+  - `src/services/authService.ts`：添加用户资料和密码更新函数
+  - `src/App.tsx`：添加新页面路由
+  - `src/components/Sidebar.tsx`：更新用户菜单跳转逻辑
+  - `src/i18n.ts`：添加账号中心和反馈页面的多语言支持
+
+### 注意事项
+
+- ⚠️ **Google Form 配置**：
+  - `FeedbackPage.tsx` 中的 `googleFormUrl` 需要替换为实际的 Google Form 嵌入链接
+  - 创建 Google Form 后，在"发送"中选择"嵌入HTML"，复制 src 链接即可
+
+## 1.2.29 (2026-01-20)
+
+### 功能增强
+
+- 🎨 **改进用户菜单交互**：
+  - 侧边栏用户信息区域改为鼠标悬停显示下拉菜单
+  - 移除直接显示的"登出"按钮
+  - 鼠标悬停时用户名高亮显示
+  - 下拉菜单包含三个选项：账号中心、意见反馈、退出登录
+  - 账号中心和意见反馈功能预留，暂未实现
+  - 点击外部自动关闭菜单
+  - 鼠标离开菜单区域自动收起
+
+### 修复
+
+- 🐛 **修复语言切换器被覆盖问题**：
+  - 将用户菜单触发区域限制在头像和用户名区域
+  - 语言切换器独立在外，不受菜单触发事件影响
+  - 为语言切换器添加 `z-10` 层级，确保可点击
+  - 保持原有的视觉布局不变
+
+- 🐛 **修复两个下拉菜单叠加问题**：
+  - 点击语言切换器时自动关闭用户菜单
+  - 鼠标移入语言切换器区域时自动关闭用户菜单
+  - 避免用户菜单和语言切换器的下拉框同时显示
+
+### 技术改进
+
+- 📝 **侧边栏组件优化**：
+  - 添加 `showUserMenu` 状态管理用户菜单显示
+  - 添加 `userMenuRef` ref 用于检测点击外部
+  - 添加 `UserCircle` 和 `MessageCircle` 图标导入
+  - 实现鼠标悬停（`onMouseEnter`）和点击（`onClick`）事件处理
+  - 菜单定位在用户信息区域上方（`bottom-full`）
+  - 重构布局：将触发区域和语言切换器分离，避免事件冲突
+
+### 国际化
+
+- 🌐 **新增多语言支持**：
+  - 中文：账号中心、意见反馈
+  - 英文：Account Center、Feedback
+  - 日文：アカウントセンター、フィードバック
+
+### 文件变更
+
+- 修改文件：
+  - `src/components/Sidebar.tsx`：重构用户信息区域，添加悬停菜单，修复语言切换器被覆盖问题
+  - `src/i18n.ts`：添加账号中心和意见反馈的翻译
+
 ## 1.2.28 (2026-01-20)
 
 ### 修复

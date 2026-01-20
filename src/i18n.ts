@@ -1,4 +1,4 @@
-// 1.0.0: YUIChat 项目 - 国际化配置
+// 1.2.34: YUIChat 项目 - 国际化配置 (补全项目设置页面多语言)
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
@@ -79,6 +79,35 @@ const resources = {
       user: '用户',
       signOut: '登出',
       defaultProject: '默认项目',
+      accountCenter: '账号中心', // 1.2.6
+      feedback: '意见反馈', // 1.2.6
+      back: '返回', // 1.2.29
+      
+      // Account Center Page - 1.2.29
+      accountCenterDescription: '管理您的个人信息和账号设置',
+      basicInfo: '基本信息',
+      displayName: '显示名称',
+      pleaseEnterName: '请输入您的名字',
+      emailCannotBeChanged: '邮箱地址无法更改',
+      loginMethod: '登录方式',
+      thirdPartyLoginNote: '您使用第三方账号登录，密码由该服务提供商管理。如需修改密码，请在对应的服务提供商处进行修改。',
+      changePassword: '修改密码',
+      newPassword: '新密码',
+      pleaseEnterNewPassword: '请输入新密码',
+      confirmPassword: '确认密码',
+      pleaseConfirmPassword: '请再次输入新密码',
+      updatePassword: '更新密码',
+      updating: '更新中...',
+      updateProfileSuccess: '资料更新成功',
+      updateProfileFailed: '资料更新失败',
+      updatePasswordSuccess: '密码更新成功',
+      updatePasswordFailed: '密码更新失败',
+      passwordMismatch: '两次输入的密码不一致',
+      
+      // Feedback Page - 1.2.29
+      feedbackDescription: '我们非常重视您的意见和建议，请告诉我们您的想法',
+      note: '提示',
+      feedbackNote: '您的反馈对我们非常重要，我们会认真阅读每一条反馈并持续改进产品。',
       
       // TopNav
       cloudDocuments: '云文档',
@@ -223,6 +252,40 @@ const resources = {
       defaultQuestion2: '有哪些常见问题？',
       defaultQuestion3: '如何使用这个系统？',
       aiGeneratedDisclaimer: '以上内容由AI生成，不代表开发者立场',
+      
+      // Project Settings Page
+      projectSettingsDescription: '管理项目的基本信息',
+      tabProjectInfo: '项目信息',
+      tabDigitalEmployee: '数字员工',
+      tabConversation: '对话设置',
+      tabSkills: '技能设置',
+      modifyProjectInfo: '修改项目名称和描述',
+      projectName: '项目名称',
+      projectNamePlaceholder: '请输入项目名称',
+      projectDescription: '项目描述',
+      projectDescriptionPlaceholder: '请输入项目描述',
+      digitalEmployeeConfig: '配置数字员工的基本信息和形象',
+      digitalEmployeeDeveloping: '数字员工配置功能开发中...',
+      conversationConfig: '配置AI头像、欢迎语和推荐问题',
+      aiAvatar: 'AI头像',
+      clickOrDragUpload: '点击或拖拽图片到此处上传',
+      avatarUploadHint: '支持 PNG、JPG、JPEG、GIF、WEBP，最大2MB',
+      welcomeMessageMultiLang: '欢迎语（多语言）',
+      recommendedQuestionsMultiLang: '推荐问题（多语言，最多3个）',
+      addQuestion: '添加问题',
+      questionIndex: '问题 {{index}}',
+      saveConfig: '保存配置',
+      skillsConfig: '配置AI的技能和能力',
+      skillsDeveloping: '技能设置功能开发中...',
+      projectNotFound: '项目不存在',
+      pleaseCreateProjectFirst: '请先创建一个项目',
+      projectAccessDenied: '项目不存在或无权访问',
+      invalidImageType: '请上传图片文件（png, jpg, jpeg, gif, webp）',
+      imageSizeTooLarge: '头像文件大小不能超过2MB',
+      invalidImageFile: '请上传有效的图片文件（不超过2MB）',
+      maxQuestionsReached: '每种语言最多只能添加3个推荐问题',
+      settingsSaved: '设置已保存',
+      settingsSaveFailed: '保存失败，请重试',
     }
   },
   ja: {
@@ -291,6 +354,35 @@ const resources = {
       user: 'ユーザー',
       signOut: 'ログアウト',
       defaultProject: 'デフォルトプロジェクト',
+      accountCenter: 'アカウントセンター', // 1.2.6
+      feedback: 'フィードバック', // 1.2.6
+      back: '戻る', // 1.2.29
+      
+      // Account Center Page - 1.2.29
+      accountCenterDescription: '個人情報とアカウント設定を管理',
+      basicInfo: '基本情報',
+      displayName: '表示名',
+      pleaseEnterName: '名前を入力してください',
+      emailCannotBeChanged: 'メールアドレスは変更できません',
+      loginMethod: 'ログイン方法',
+      thirdPartyLoginNote: 'サードパーティアカウントでログインしています。パスワードはサービスプロバイダーによって管理されています。パスワードを変更するには、対応するサービスプロバイダーで変更してください。',
+      changePassword: 'パスワード変更',
+      newPassword: '新しいパスワード',
+      pleaseEnterNewPassword: '新しいパスワードを入力してください',
+      confirmPassword: 'パスワードの確認',
+      pleaseConfirmPassword: '新しいパスワードを再度入力してください',
+      updatePassword: 'パスワードを更新',
+      updating: '更新中...',
+      updateProfileSuccess: 'プロフィール更新成功',
+      updateProfileFailed: 'プロフィール更新失敗',
+      updatePasswordSuccess: 'パスワード更新成功',
+      updatePasswordFailed: 'パスワード更新失敗',
+      passwordMismatch: 'パスワードが一致しません',
+      
+      // Feedback Page - 1.2.29
+      feedbackDescription: 'ご意見やご提案をお寄せください',
+      note: '注意',
+      feedbackNote: 'お客様のフィードバックは私たちにとって非常に重要です。すべてのフィードバックを真剣に読み、製品の改善に努めます。',
       
       // TopNav
       cloudDocuments: 'クラウドドキュメント',
@@ -412,6 +504,63 @@ const resources = {
       defaultQuestion2: 'よくある質問は何ですか？',
       defaultQuestion3: 'このシステムの使い方は？',
       aiGeneratedDisclaimer: '上記の内容はAIによって生成されており、開発者の立場を代表するものではありません',
+      
+      // Share Page
+      shareDescription: '公開チャットリンクを生成して、ユーザーが直接 AI アシスタントと対話できるようにします。',
+      shareLinkSettings: '共有リンク設定',
+      active: '有効',
+      publicAccessLink: '公開アクセスリンク（プロジェクトレベル）',
+      linkCopied: 'リンクをクリップボードにコピーしました',
+      tokenRefreshed: '共有トークンを更新しました',
+      refreshFailed: '更新に失敗しました',
+      noKnowledgeBase: 'プロジェクトが見つかりません',
+      pleaseCreateKBFirst: '共有機能を有効にするには、まずプロジェクトを作成してください。',
+      copy: 'コピー',
+      copied: 'コピー済み',
+      visit: 'アクセス',
+      regenerateLink: 'リンクをリセット',
+      regenerateLinkTip: 'リンクの漏洩が心配な場合は、トークンをリセットできます。古いリンクはすぐに無効になります。',
+      resetLink: '共有リンクをリセット',
+      shareModeInstructions: '使用説明',
+      shareInstruction1: 'このリンクからあなたの専用対話インターフェースを直接開きます。',
+      shareInstruction2: 'ユーザーはログインなしで、プロジェクトのすべてのドキュメントに基づいた質疑応答が可能です。',
+      shareInstruction3: 'すべての会話データは「会話データ」にアーカイブされます。',
+      securityNotice: 'セキュリティ通知',
+      securityNoticeText: '共有リンクは適切に保管してください。ユーザーはプロジェクトを編集することはできませんが、プロジェクト内のすべてのドキュメントの公開情報にアクセスできます。',
+
+      // Project Settings Page
+      projectSettingsDescription: 'プロジェクトの基本情報を管理します',
+      tabProjectInfo: 'プロジェクト情報',
+      tabDigitalEmployee: 'デジタル従業員',
+      tabConversation: '対話設定',
+      tabSkills: 'スキル設定',
+      modifyProjectInfo: 'プロジェクト名と説明を編集',
+      projectName: 'プロジェクト名',
+      projectNamePlaceholder: 'プロジェクト名を入力してください',
+      projectDescription: 'プロジェクトの説明',
+      projectDescriptionPlaceholder: 'プロジェクトの説明を入力してください',
+      digitalEmployeeConfig: 'デジタル従業員の基本情報とイメージを設定',
+      digitalEmployeeDeveloping: 'デジタル従業員設定機能は開発中です...',
+      conversationConfig: 'AIアイコン、歓迎メッセージ、推奨質問を設定',
+      aiAvatar: 'AIアイコン',
+      clickOrDragUpload: 'クリックまたは画像をここにドラッグしてアップロード',
+      avatarUploadHint: 'PNG、JPG、JPEG、GIF、WEBPをサポート、最大2MB',
+      welcomeMessageMultiLang: '歓迎メッセージ（多言語）',
+      recommendedQuestionsMultiLang: '推奨質問（多言語、最大3つ）',
+      addQuestion: '質問を追加',
+      questionIndex: '質問 {{index}}',
+      saveConfig: '設定を保存',
+      skillsConfig: 'AIのスキルと能力を設定',
+      skillsDeveloping: 'スキル設定機能は開発中です...',
+      projectNotFound: 'プロジェクトが見つかりません',
+      pleaseCreateProjectFirst: 'まずプロジェクトを作成してください',
+      projectAccessDenied: 'プロジェクトが存在しないか、アクセス権限がありません',
+      invalidImageType: '画像ファイルをアップロードしてください（png, jpg, jpeg, gif, webp）',
+      imageSizeTooLarge: 'アイコンファイルのサイズは2MBを超えてはいけません',
+      invalidImageFile: '有効な画像ファイルをアップロードしてください（2MB以内）',
+      maxQuestionsReached: '各言語で追加できる推奨質問は最大3つまでです',
+      settingsSaved: '設定を保存しました',
+      settingsSaveFailed: '保存に失敗しました。再試行してください',
     }
   },
   en: {
@@ -480,6 +629,35 @@ const resources = {
       user: 'User',
       signOut: 'Sign Out',
       defaultProject: 'Default Project',
+      accountCenter: 'Account Center', // 1.2.6
+      feedback: 'Feedback', // 1.2.6
+      back: 'Back', // 1.2.29
+      
+      // Account Center Page - 1.2.29
+      accountCenterDescription: 'Manage your personal information and account settings',
+      basicInfo: 'Basic Information',
+      displayName: 'Display Name',
+      pleaseEnterName: 'Please enter your name',
+      emailCannotBeChanged: 'Email address cannot be changed',
+      loginMethod: 'Login Method',
+      thirdPartyLoginNote: 'You are using a third-party account to log in. Your password is managed by that service provider. To change your password, please do so at the corresponding service provider.',
+      changePassword: 'Change Password',
+      newPassword: 'New Password',
+      pleaseEnterNewPassword: 'Please enter new password',
+      confirmPassword: 'Confirm Password',
+      pleaseConfirmPassword: 'Please enter new password again',
+      updatePassword: 'Update Password',
+      updating: 'Updating...',
+      updateProfileSuccess: 'Profile updated successfully',
+      updateProfileFailed: 'Failed to update profile',
+      updatePasswordSuccess: 'Password updated successfully',
+      updatePasswordFailed: 'Failed to update password',
+      passwordMismatch: 'Passwords do not match',
+      
+      // Feedback Page - 1.2.29
+      feedbackDescription: 'We value your opinions and suggestions, please share your thoughts',
+      note: 'Note',
+      feedbackNote: 'Your feedback is very important to us. We read every feedback carefully and continuously improve our product.',
       
       // TopNav
       cloudDocuments: 'Cloud Documents',
@@ -595,12 +773,69 @@ const resources = {
       publicChatInvalidLink: 'This share link is invalid or has expired',
       publicChatContactOwner: 'Please contact the sharer for a new link, or check if the link is complete.',
       publicChatAiAssistant: 'AI Assistant',
-      
+
       // 1.2.28: Default Questions
       defaultQuestion1: 'Can you introduce this project?',
       defaultQuestion2: 'What are the common questions?',
       defaultQuestion3: 'How to use this system?',
       aiGeneratedDisclaimer: 'The above content is generated by AI and does not represent the developer\'s position',
+
+      // Share Page
+      shareDescription: 'Generate a public chat link to let your users directly interact with the AI assistant.',
+      shareLinkSettings: 'Share Link Settings',
+      active: 'Active',
+      publicAccessLink: 'Public Access Link (Project Level)',
+      linkCopied: 'Link copied to clipboard',
+      tokenRefreshed: 'Share token refreshed',
+      refreshFailed: 'Refresh failed',
+      noKnowledgeBase: 'Project not found',
+      pleaseCreateKBFirst: 'Please create a project first to enable the sharing feature.',
+      copy: 'Copy',
+      copied: 'Copied',
+      visit: 'Visit',
+      regenerateLink: 'Reset Link',
+      regenerateLinkTip: 'If you are concerned about link leakage, you can reset the token. The old link will immediately become invalid.',
+      resetLink: 'Reset Share Link',
+      shareModeInstructions: 'Instructions',
+      shareInstruction1: 'This link directly opens your exclusive chat interface.',
+      shareInstruction2: 'Users can perform Q&A based on all project documents without logging in.',
+      shareInstruction3: 'All conversation data will be archived in "Conversation Data".',
+      securityNotice: 'Security Notice',
+      securityNoticeText: 'Please keep your share link safe. While users cannot modify your project, they can access public information of all documents in the project.',
+
+      // Project Settings Page
+      projectSettingsDescription: 'Manage project basic information',
+      tabProjectInfo: 'Project Info',
+      tabDigitalEmployee: 'Digital Employee',
+      tabConversation: 'Conversation',
+      tabSkills: 'Skills',
+      modifyProjectInfo: 'Modify project name and description',
+      projectName: 'Project Name',
+      projectNamePlaceholder: 'Please enter project name',
+      projectDescription: 'Project Description',
+      projectDescriptionPlaceholder: 'Please enter project description',
+      digitalEmployeeConfig: 'Configure digital employee basic information and avatar',
+      digitalEmployeeDeveloping: 'Digital employee configuration is under development...',
+      conversationConfig: 'Configure AI avatar, welcome message, and recommended questions',
+      aiAvatar: 'AI Avatar',
+      clickOrDragUpload: 'Click or drag image here to upload',
+      avatarUploadHint: 'Supports PNG, JPG, JPEG, GIF, WEBP, max 2MB',
+      welcomeMessageMultiLang: 'Welcome Message (Multi-language)',
+      recommendedQuestionsMultiLang: 'Recommended Questions (Multi-language, max 3)',
+      addQuestion: 'Add Question',
+      questionIndex: 'Question {{index}}',
+      saveConfig: 'Save Config',
+      skillsConfig: 'Configure AI skills and capabilities',
+      skillsDeveloping: 'Skills configuration is under development...',
+      projectNotFound: 'Project not found',
+      pleaseCreateProjectFirst: 'Please create a project first',
+      projectAccessDenied: 'Project does not exist or access denied',
+      invalidImageType: 'Please upload an image file (png, jpg, jpeg, gif, webp)',
+      imageSizeTooLarge: 'Avatar file size cannot exceed 2MB',
+      invalidImageFile: 'Please upload a valid image file (max 2MB)',
+      maxQuestionsReached: 'Maximum 3 recommended questions per language',
+      settingsSaved: 'Settings saved',
+      settingsSaveFailed: 'Save failed, please try again',
     }
   }
 };
@@ -619,7 +854,6 @@ i18n
     detection: {
       order: ['navigator', 'htmlTag', 'path', 'subdomain'],
       caches: ['localStorage'],
-      checkWhitelist: true,
     }
   });
 

@@ -17,6 +17,8 @@ import { PublicChatPage } from './pages/PublicChatPage'; // 1.2.24: 公开聊天
 import { SettingsPage } from './pages/SettingsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { AuthPage } from './pages/AuthPage';
+import { AccountCenterPage } from './pages/AccountCenterPage'; // 1.2.29: 账号中心
+import { FeedbackPage } from './pages/FeedbackPage'; // 1.2.29: 意见反馈
 import { AuthModal } from './components/AuthModal';
 import { getCurrentUser, onAuthStateChange } from './services/authService';
 import { isSupabaseAvailable } from './lib/supabase';
@@ -118,6 +120,8 @@ function App() {
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/share" element={<SharePage />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/account" element={<AccountCenterPage />} />
+                    <Route path="/feedback" element={<FeedbackPage />} />
                   </Routes>
                 </main>
               </div>

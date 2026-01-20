@@ -2,6 +2,8 @@
  * 1.0.0: YUIChat 项目 - 左侧导航栏
  * ChatMax 风格设计
  * 1.1.5: 修复登出功能
+ * 1.2.6: 用户菜单改为鼠标悬停弹出
+ * 1.2.30: 根据登录方式显示不同的用户名
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -18,9 +20,11 @@ import {
   ChevronDown,
   User,
   LogOut,
+  UserCircle,
+  MessageCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { getCurrentUser, signOut, onAuthStateChange } from '../services/authService';
+import { getCurrentUser, signOut, onAuthStateChange, getUserProviders } from '../services/authService';
 import { isSupabaseAvailable, supabase } from '../lib/supabase';
 import { listKnowledgeBases } from '../services/kbService'; // 1.1.14: 导入项目列表服务
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -40,8 +44,10 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
   const [currentProject, setCurrentProject] = useState<KnowledgeBase | null>(null);
   const [projects, setProjects] = useState<KnowledgeBase[]>([]); // 1.1.14: 项目列表
   const [showProjectMenu, setShowProjectMenu] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false); // 1.2.6: 用户菜单显示状态
   const [user, setUser] = useState<any>(null);
   const menuRef = useRef<HTMLDivElement>(null); // 1.1.14: 用于点击外部关闭菜单
+  const userMenuRef = useRef<HTMLDivElement>(null); // 1.2.6: 用户菜单ref
 
   // 1.1.14: 加载用户和项目列表
   useEffect(() => {
@@ -101,6 +107,20 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showProjectMenu]);
+  
+  // 1.2.6: 点击外部关闭用户菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    
+    if (showUserMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showUserMenu]);
 
   // 1.1.14: 获取带项目ID的路径
   const getPathWithProject = (path: string) => {
@@ -153,6 +173,24 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
     return location.pathname.startsWith(path);
   };
 
+  // 1.2.30: 获取显示名称 - 根据登录方式显示不同的用户名
+  const getDisplayName = () => {
+    if (!user) return t('user');
+    
+    // 获取用户的登录方式
+    const providers = getUserProviders(user);
+    const isThirdPartyLogin = providers.length > 0 && !providers.includes('email');
+    
+    if (isThirdPartyLogin) {
+      // 第三方登录：优先显示 full_name 或 name
+      const metadata = user.user_metadata || {};
+      return metadata.full_name || metadata.name || user.email?.split('@')[0] || t('user');
+    } else {
+      // 邮箱登录：显示邮箱前缀
+      return user.email?.split('@')[0] || t('user');
+    }
+  };
+  
   // 1.1.5: 修复登出功能
   const handleSignOut = async () => {
     if (!isSupabaseAvailable) {
@@ -330,32 +368,85 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
 
       {/* User Info */}
       {/* 1.0.4: 语言切换按钮移到用户信息区域，放在用户信息右边 */}
-      <div className="p-4 border-t border-gray-200">
+      {/* 1.2.6: 用户菜单改为鼠标悬停弹出 */}
+      <div className="p-4 border-t border-gray-200 relative" ref={userMenuRef}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
-            <User className="w-5 h-5 text-gray-600" />
-          </div>
-          {!isCollapsed && (
-            <>
+          {/* 1.2.6: 用户信息区域（头像+用户名），触发菜单 */}
+          <div 
+            className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+            onMouseEnter={() => setShowUserMenu(true)}
+            onClick={() => setShowUserMenu(!showUserMenu)}
+          >
+            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
+              <User className="w-5 h-5 text-gray-600" />
+            </div>
+            {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate">
-                  {user?.email?.split('@')[0] || t('user')}
+                <div className={`text-sm font-medium truncate transition-colors ${
+                  showUserMenu ? 'text-primary' : 'text-gray-900 hover:text-primary'
+                }`}>
+                  {getDisplayName()}
                 </div>
-                <button
-                  onClick={handleSignOut}
-                  className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-                >
-                  <LogOut className="w-3 h-3" />
-                  {t('signOut')}
-                </button>
               </div>
-              {/* 语言切换按钮 */}
-              <div className="flex-shrink-0">
-                <LanguageSwitcher />
-              </div>
-            </>
+            )}
+          </div>
+          
+          {/* 语言切换按钮 - 独立区域，不触发菜单 */}
+          {/* 1.2.6: 点击或悬停语言切换器时关闭用户菜单，避免两个下拉框叠在一起 */}
+          {!isCollapsed && (
+            <div 
+              className="flex-shrink-0 relative z-10"
+              onClick={() => setShowUserMenu(false)}
+              onMouseEnter={() => setShowUserMenu(false)}
+            >
+              <LanguageSwitcher />
+            </div>
           )}
         </div>
+        
+        {/* 1.2.6: 用户菜单下拉框 */}
+        {showUserMenu && !isCollapsed && (
+          <div 
+            className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50"
+            onMouseLeave={() => setShowUserMenu(false)}
+          >
+            {/* 账号中心 */}
+            <button
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
+              onClick={() => {
+                setShowUserMenu(false);
+                navigate('/account');
+              }}
+            >
+              <UserCircle className="w-4 h-4 text-gray-600" />
+              <span className="text-sm text-gray-900">{t('accountCenter')}</span>
+            </button>
+            
+            {/* 意见反馈 */}
+            <button
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
+              onClick={() => {
+                setShowUserMenu(false);
+                navigate('/feedback');
+              }}
+            >
+              <MessageCircle className="w-4 h-4 text-gray-600" />
+              <span className="text-sm text-gray-900">{t('feedback')}</span>
+            </button>
+            
+            {/* 退出登录 */}
+            <button
+              onClick={() => {
+                setShowUserMenu(false);
+                handleSignOut();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+            >
+              <LogOut className="w-4 h-4 text-gray-600" />
+              <span className="text-sm text-gray-900">{t('signOut')}</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
