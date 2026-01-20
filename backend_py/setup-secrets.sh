@@ -30,7 +30,7 @@ gcloud services enable secretmanager.googleapis.com
 echo -e "${YELLOW}📝 请准备以下密钥：${NC}"
 echo ""
 echo "1. Supabase URL"
-echo "   示例: https://ppodcyocqhzrjqujdxqr.supabase.co"
+echo "   示例: https://<YOUR_PROJECT_REF>.supabase.co"
 echo "   位置: Supabase Dashboard -> Settings -> API -> Project URL"
 echo ""
 echo "2. Supabase Service Role Key"

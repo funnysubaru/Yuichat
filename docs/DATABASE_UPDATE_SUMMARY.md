@@ -256,7 +256,7 @@ LIMIT 5;
    ```
 
 3. 查看日志：
-   - Supabase Dashboard: https://supabase.com/dashboard/project/ppodcyocqhzrjqujdxqr/logs
+   - Supabase Dashboard: https://supabase.com/dashboard/project/<YOUR_PROJECT_REF>/logs
    - 本地日志：`backend_py/` 目录下的输出
 
 ---

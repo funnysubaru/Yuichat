@@ -35,15 +35,15 @@
 从终端日志（Terminal 4）中可以看到真实的处理记录：
 
 ```bash
-Processing file: https://ppodcyocqhzrjqujdxqr.supabase.co/storage/v1/object/public/knowledge-base-files/574a26c5-fdc4-4c17-9cac-a4dc8e09c1d3/0.2229145577573476.docx
+Processing file: https://<YOUR_PROJECT_REF>.supabase.co/storage/v1/object/public/knowledge-base-files/<KB_ID>/<FILE_NAME>.docx
 Split into 1 chunks
 HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
 
-Processing file: https://ppodcyocqhzrjqujdxqr.supabase.co/storage/v1/object/public/knowledge-base-files/574a26c5-fdc4-4c17-9cac-a4dc8e09c1d3/0.46963295813105643.docx
+Processing file: https://<YOUR_PROJECT_REF>.supabase.co/storage/v1/object/public/knowledge-base-files/<KB_ID>/<FILE_NAME>.docx
 Split into 1 chunks
 HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
 
-Processing file: https://ppodcyocqhzrjqujdxqr.supabase.co/storage/v1/object/public/knowledge-base-files/574a26c5-fdc4-4c17-9cac-a4dc8e09c1d3/0.1789748587715041.docx
+Processing file: https://<YOUR_PROJECT_REF>.supabase.co/storage/v1/object/public/knowledge-base-files/<KB_ID>/<FILE_NAME>.docx
 Split into 2 chunks
 HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
 ```

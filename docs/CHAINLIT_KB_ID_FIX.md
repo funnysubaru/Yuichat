@@ -10,7 +10,7 @@
 
 同时伴随以下错误：
 ```
-ValueError: bad query field: '8yDzGUiurAM7!@db.ppodcyocqhzrjqujdxqr.supabase.co:5432/postgres'
+ValueError: bad query field: '<PASSWORD>@db.<YOUR_PROJECT_REF>.supabase.co:5432/postgres'
 ```
 
 ## 问题分析

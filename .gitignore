@@ -37,6 +37,13 @@ Thumbs.db
 .chainlit/
 .claude/
 
+# Sample files (contains third-party sensitive data)
+sample/
+
+# Local vector database
+backend_py/chroma_db/
+chroma_db/
+
 # Logs
 *.log
 npm-debug.log*

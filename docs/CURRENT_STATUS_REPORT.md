@@ -60,7 +60,7 @@
 ### 3. Supabase 数据库
 
 **状态**: ✅ 已更新  
-**项目**: ppodcyocqhzrjqujdxqr  
+**项目**: <YOUR_PROJECT_REF>  
 **更新方式**: MCP 工具
 
 **已执行的迁移**：

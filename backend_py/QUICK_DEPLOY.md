@@ -25,7 +25,7 @@ cd backend_py
 
 1. **Supabase URL**: 
    ```
-   https://ppodcyocqhzrjqujdxqr.supabase.co
+   https://<YOUR_PROJECT_REF>.supabase.co
    ```
 
 2. **Supabase Service Role Key**: 

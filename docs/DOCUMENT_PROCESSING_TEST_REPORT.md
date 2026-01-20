@@ -56,7 +56,7 @@
 
 **测试日志**:
 ```
-Processing file: https://ppodcyocqhzrjqujdxqr.supabase.co/storage/v1/object/public/knowledge-base-files/...
+Processing file: https://<YOUR_PROJECT_REF>.supabase.co/storage/v1/object/public/knowledge-base-files/...
 ```
 
 **结果**: ✅ 所有格式的文档都能成功加载
@@ -219,7 +219,7 @@ LookupError: <ContextVar name='local_steps' at 0x10acb31d0>
 
 **错误信息**:
 ```
-ValueError: bad query field: '8yDzGUiurAM7!@db.ppodcyocqhzrjqujdxqr.supabase.co:5432/postgres'
+ValueError: bad query field: '<PASSWORD>@db.<YOUR_PROJECT_REF>.supabase.co:5432/postgres'
 ```
 
 **影响**: 仅在启用 Chainlit 数据持久化时出现，不影响向量存储
