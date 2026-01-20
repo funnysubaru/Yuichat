@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.2.41 (2026-01-20)
+
+### 前端优化
+
+- 🎨 **登录页面 Logo 更新**：
+  - 将登录页面左侧的 BookOpen 图标替换为真正的 YUIChat Logo
+  - Logo 包含图标和 "YUIChat" 文字，与整体品牌保持一致
+  - 使用 CSS 滤镜（`brightness-0 invert`）在紫色背景上显示白色 Logo
+  - 添加图片加载失败时的 PNG 降级处理
+
+- 🌐 **登录页面语言切换优化**：
+  - 语言选择菜单改为向下展开（更符合 UI 规范）
+  - 语言默认跟随浏览器设置（i18n 检测顺序: navigator 优先）
+
+---
+
+## 1.2.40 (2026-01-20)
+
+### 部署优化
+
+- ⚡ **GCP Cloud Run 部署脚本优化**：
+  - **迁移到 Artifact Registry**：从已弃用的 gcr.io 迁移到 Artifact Registry（gcr.io 将于 2025-03-18 停止写入）
+  - **添加 Cloud Build 镜像层缓存**：通过 `cloudbuild.yaml` 配置 `--cache-from` 缓存，大幅加速增量构建
+  - **分离一次性初始化**：将 API 启用和仓库创建移至 `setup-gcp-once.sh`，避免每次部署重复执行
+  - **并行推送镜像标签**：同时推送 `SHORT_SHA`、`VERSION`、`cache`、`latest` 标签
+  - **使用高性能构建机器**：配置 `E2_HIGHCPU_8` 机器类型加速构建
+  - **添加部署时间统计**：显示构建时间、部署时间和总耗时
+
+### 新增文件
+
+- 📄 **`backend_py/cloudbuild.yaml`**：Cloud Build 配置文件，支持镜像层缓存
+- 📄 **`backend_py/setup-gcp-once.sh`**：一次性 GCP 初始化脚本（启用 API、创建 Artifact Registry 仓库）
+
+### 脚本变更
+
+- 🔄 **`backend_py/deploy-gcp.sh`**：
+  - 使用 `cloudbuild.yaml` 进行构建（替代直接 `gcloud builds submit --tag`）
+  - 移除每次部署的 `gcloud services enable`（改为一次性初始化）
+  - 添加版本标签管理（支持 Git SHA 和 VERSION 文件）
+  - 添加部署统计和常用命令提示
+
+---
+
 ## 1.2.39 (2026-01-20)
 
 ### 前端修复

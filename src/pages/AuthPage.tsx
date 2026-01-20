@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, LogIn, UserPlus, Loader2, BookOpen, CheckCircle } from 'lucide-react';
+import { Mail, Lock, LogIn, UserPlus, Loader2, CheckCircle } from 'lucide-react';
 import { signUpWithEmail, signInWithEmail, signInWithGoogle } from '../services/authService';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
@@ -110,8 +110,9 @@ export function AuthPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center p-4">
       {/* 语言切换按钮 - 右上角 */}
+      {/* 1.2.41: 使用 direction="down" 使菜单向下展开 */}
       <div className="absolute top-4 right-4">
-        <LanguageSwitcher />
+        <LanguageSwitcher direction="down" />
       </div>
 
       <motion.div
@@ -122,11 +123,20 @@ export function AuthPage() {
         {/* 左侧 - 品牌展示 */}
         <div className="hidden md:flex md:w-1/2 bg-gradient-to-br from-primary to-purple-600 p-12 flex-col justify-between text-white">
           <div>
+            {/* 1.2.30: 使用真正的logo图片替代BookOpen图标 */}
             <div className="flex items-center gap-3 mb-8">
-              <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                <BookOpen className="w-7 h-7" />
-              </div>
-              <span className="text-3xl font-bold">YUIChat</span>
+              <img 
+                src="/logo.svg" 
+                alt="YUIChat Logo" 
+                className="h-12 w-auto object-contain brightness-0 invert"
+                onError={(e) => {
+                  // 如果SVG加载失败，尝试PNG
+                  const target = e.target as HTMLImageElement;
+                  if (target.src.endsWith('.svg')) {
+                    target.src = '/logo.png';
+                  }
+                }}
+              />
             </div>
             <h1 className="text-4xl font-bold mb-4">
               {t('welcomeToYUIChat')}
