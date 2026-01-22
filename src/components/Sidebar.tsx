@@ -4,6 +4,7 @@
  * 1.1.5: 修复登出功能
  * 1.2.6: 用户菜单改为鼠标悬停弹出
  * 1.2.30: 根据登录方式显示不同的用户名
+ * 1.2.54: 修复新创建项目点击后当前项目不更新的问题
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -81,18 +82,41 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
   }, []);
   
   // 1.1.14: 从URL参数加载当前项目
+  // 1.2.54: 如果项目ID在列表中找不到，重新加载项目列表
+  // 1.2.54: 没有 project 参数时清除当前项目（全局视图模式）
   useEffect(() => {
     const projectId = searchParams.get('project');
     if (projectId && projects.length > 0) {
       const project = projects.find(p => p.id === projectId);
       if (project) {
         setCurrentProject(project);
+      } else {
+        // 1.2.54: 项目ID在列表中找不到，可能是新创建的项目，重新加载列表
+        const reloadProjects = async () => {
+          if (user && isSupabaseAvailable) {
+            try {
+              const projectList = await listKnowledgeBases(user.id);
+              setProjects(projectList);
+              // 在新列表中查找项目
+              const foundProject = projectList.find((p: KnowledgeBase) => p.id === projectId);
+              if (foundProject) {
+                setCurrentProject(foundProject);
+              } else {
+                // 1.2.54: 项目在新列表中也找不到（可能已被删除），清除当前项目
+                setCurrentProject(null);
+              }
+            } catch (error) {
+              logger.error('Error reloading projects:', error);
+            }
+          }
+        };
+        reloadProjects();
       }
-    } else if (projects.length > 0 && !currentProject) {
-      // 如果没有项目ID参数，使用第一个项目
-      setCurrentProject(projects[0]);
+    } else if (!projectId) {
+      // 1.2.54: 没有 project 参数时清除当前项目，进入全局视图模式
+      setCurrentProject(null);
     }
-  }, [searchParams.get('project'), projects]);
+  }, [searchParams.get('project'), projects, user]);
   
   // 1.1.14: 点击外部关闭项目菜单
   useEffect(() => {
@@ -251,8 +275,8 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
         </div>
       </div>
 
-      {/* Current Project */}
-      {!isCollapsed && (
+      {/* Current Project - 1.2.54: 只有选中项目时才显示 */}
+      {!isCollapsed && currentProject && (
         <div className="p-4 border-b border-gray-200 relative" ref={menuRef}>
           <div className="text-xs text-gray-500 mb-2">{t('currentProject')}</div>
           <button
@@ -262,11 +286,11 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 bg-primary/20 rounded flex items-center justify-center">
                 <span className="text-xs font-semibold text-primary">
-                  {currentProject?.name?.charAt(0)?.toUpperCase() || 'Y'}
+                  {currentProject.name.charAt(0).toUpperCase()}
                 </span>
               </div>
               <span className="text-sm font-medium text-gray-900 truncate">
-                {currentProject?.name || t('defaultProject')}
+                {currentProject.name}
               </span>
             </div>
             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showProjectMenu ? 'rotate-180' : ''}`} />
@@ -312,33 +336,38 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
         </div>
       )}
 
-      {/* Project Menu */}
+      {/* Menu Container */}
       <div className="flex-1 overflow-y-auto py-2">
-        {projectMenuItems.map((item) => {
-          const Icon = item.icon;
-          const active = isActive(item.path);
-          return (
-            <button
-              key={item.id}
-              onClick={() => handleMenuItemClick(item)} // 1.2.3: 使用新的点击处理函数
-              className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors ${
-                active
-                  ? 'bg-primary/10 text-primary border-r-2 border-primary'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              {!isCollapsed && (
-                <span className="text-sm font-medium">{item.label}</span>
-              )}
-            </button>
-          );
-        })}
+        {/* Project Menu - 1.2.54: 只有选中项目时才显示项目相关菜单 */}
+        {currentProject && (
+          <>
+            {projectMenuItems.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.path);
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleMenuItemClick(item)} // 1.2.3: 使用新的点击处理函数
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors ${
+                    active
+                      ? 'bg-primary/10 text-primary border-r-2 border-primary'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  {!isCollapsed && (
+                    <span className="text-sm font-medium">{item.label}</span>
+                  )}
+                </button>
+              );
+            })}
 
-        {/* Separator */}
-        <div className="my-2 border-t border-gray-200" />
+            {/* Separator - 只在有项目菜单时显示 */}
+            <div className="my-2 border-t border-gray-200" />
+          </>
+        )}
 
-        {/* Account Menu */}
+        {/* Account Menu - 1.2.54: 全局菜单始终显示 */}
         {!isCollapsed && (
           <div className="px-4 py-2">
             <div className="text-xs text-gray-500 mb-2">{t('account')}</div>

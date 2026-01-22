@@ -1,4 +1,4 @@
-// 1.2.34: YUIChat 项目 - 国际化配置 (补全项目设置页面多语言)
+// 1.2.54: YUIChat 项目 - 国际化配置 (添加删除项目功能多语言)
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
@@ -291,6 +291,13 @@ const resources = {
       maxQuestionsReached: '每种语言最多只能添加3个推荐问题',
       settingsSaved: '设置已保存',
       settingsSaveFailed: '保存失败，请重试',
+      
+      // 1.2.54: 删除项目功能
+      deleteProject: '删除项目',
+      deleteProjectConfirmTitle: '确认删除项目',
+      deleteProjectConfirmDescription: '此操作将永久删除项目「{{projectName}}」及其所有文档和对话记录。此操作不可恢复，是否继续？',
+      deleteProjectSuccess: '项目删除成功',
+      deleteProjectFailed: '项目删除失败',
     }
   },
   ja: {
@@ -571,6 +578,13 @@ const resources = {
       maxQuestionsReached: '各言語で追加できる推奨質問は最大3つまでです',
       settingsSaved: '設定を保存しました',
       settingsSaveFailed: '保存に失敗しました。再試行してください',
+      
+      // 1.2.54: 削除プロジェクト機能
+      deleteProject: 'プロジェクトを削除',
+      deleteProjectConfirmTitle: 'プロジェクトの削除を確認',
+      deleteProjectConfirmDescription: 'この操作はプロジェクト「{{projectName}}」とそのすべてのドキュメントと会話記録を完全に削除します。この操作は取り消すことができません。続行しますか？',
+      deleteProjectSuccess: 'プロジェクトの削除に成功しました',
+      deleteProjectFailed: 'プロジェクトの削除に失敗しました',
     }
   },
   en: {
@@ -851,6 +865,13 @@ const resources = {
       maxQuestionsReached: 'Maximum 3 recommended questions per language',
       settingsSaved: 'Settings saved',
       settingsSaveFailed: 'Save failed, please try again',
+      
+      // 1.2.54: Delete project feature
+      deleteProject: 'Delete Project',
+      deleteProjectConfirmTitle: 'Confirm Delete Project',
+      deleteProjectConfirmDescription: 'This action will permanently delete the project "{{projectName}}" along with all its documents and conversation records. This action cannot be undone. Continue?',
+      deleteProjectSuccess: 'Project deleted successfully',
+      deleteProjectFailed: 'Failed to delete project',
     }
   }
 };
@@ -867,7 +888,9 @@ i18n
       escapeValue: false
     },
     detection: {
-      order: ['navigator', 'htmlTag', 'path', 'subdomain'],
+      // 1.2.53: 将 localStorage 放在最前面，确保用户手动选择的语言优先生效
+      // 修复：登录页面选择日语后，进入管理页面变成中文的问题
+      order: ['localStorage', 'navigator', 'htmlTag', 'path', 'subdomain'],
       caches: ['localStorage'],
     }
   });

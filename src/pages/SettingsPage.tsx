@@ -2,16 +2,18 @@
  * 1.1.14: 项目设置页面
  * 支持项目隔离，根据URL参数加载对应项目的设置
  * 1.2.5: 添加tab切换功能
+ * 1.2.54: 添加删除项目功能
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
-import { Settings, Save, Loader2, Upload, X, Plus, FileText, User, MessageSquare, Brain } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Settings, Save, Loader2, Upload, X, Plus, FileText, User, MessageSquare, Brain, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getCurrentUser } from '../services/authService';
 import { toast } from 'react-hot-toast';
 import { logger } from '../utils/logger';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 // 1.2.5: Tab类型定义
 type TabType = 'project-info' | 'digital-employee' | 'conversation' | 'skills';
@@ -19,6 +21,7 @@ type TabType = 'project-info' | 'digital-employee' | 'conversation' | 'skills';
 export function SettingsPage() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate(); // 1.2.54: 用于删除后跳转
   // 1.2.5: 当前选中的tab
   const [activeTab, setActiveTab] = useState<TabType>('project-info');
   const [kb, setKb] = useState<any>(null);
@@ -26,6 +29,10 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  
+  // 1.2.54: 删除项目相关状态
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   
   // 1.2.0: 聊天配置状态
   const [chatConfig, setChatConfig] = useState<any>({
@@ -270,6 +277,42 @@ export function SettingsPage() {
     }
   };
 
+  // 1.2.54: 处理删除项目
+  const handleDeleteProject = async () => {
+    if (!kb) return;
+    
+    setDeleting(true);
+    try {
+      // 删除项目（knowledge_base）
+      // 相关的 documents 和 conversations 会通过数据库级联删除
+      const { error } = await supabase
+        .from('knowledge_bases')
+        .delete()
+        .eq('id', kb.id);
+
+      if (error) throw error;
+      
+      toast.success(t('deleteProjectSuccess'));
+      // 跳转到全部项目页面
+      navigate('/');
+    } catch (error) {
+      logger.error('Error deleting project:', error);
+      toast.error(t('deleteProjectFailed'));
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+
+  // 1.2.54: 处理删除确认弹窗关闭
+  const handleDeleteModalClose = (confirmed: boolean) => {
+    if (confirmed) {
+      handleDeleteProject();
+    } else {
+      setShowDeleteModal(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -383,7 +426,8 @@ export function SettingsPage() {
                 />
               </div>
 
-              <div className="flex justify-end pt-4 border-t border-gray-200">
+              {/* 1.2.54: 按钮区域 - 保存和删除 */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                 <button
                   onClick={handleSave}
                   disabled={saving}
@@ -398,6 +442,24 @@ export function SettingsPage() {
                     <>
                       <Save className="w-4 h-4" />
                       {t('save')}
+                    </>
+                  )}
+                </button>
+                {/* 1.2.54: 删除项目按钮 */}
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  disabled={deleting}
+                  className="px-6 py-2 bg-white text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {t('deleting')}
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      {t('deleteProject')}
                     </>
                   )}
                 </button>
@@ -635,6 +697,15 @@ export function SettingsPage() {
         )}
         </div>
       </div>
+
+      {/* 1.2.54: 删除项目确认弹窗 */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        onClose={handleDeleteModalClose}
+        title={t('deleteProjectConfirmTitle')}
+        description={t('deleteProjectConfirmDescription', { projectName: kb?.name || '' })}
+        isDelete={true}
+      />
     </div>
   );
 }

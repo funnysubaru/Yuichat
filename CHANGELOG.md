@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.2.54 (2026-01-22)
+
+### 添加删除项目功能
+
+- ➕ **新功能**：在项目设置页面添加删除项目按钮
+  - 在保存按钮右边添加红色边框的"删除项目"按钮
+  - 点击后弹出确认对话框，显示项目名称和警告信息
+  - 确认后删除项目并跳转到全部项目页面
+  - 删除操作会级联删除项目下的所有文档和对话记录
+
+### 更新内容
+
+- 📄 **`src/pages/SettingsPage.tsx`**：
+  - 添加删除项目相关状态（showDeleteModal, deleting）
+  - 添加 handleDeleteProject 和 handleDeleteModalClose 函数
+  - 在项目信息 Tab 的保存按钮右边添加删除按钮
+  - 添加 ConfirmModal 确认弹窗
+
+- 📄 **`src/i18n.ts`**：
+  - 添加删除项目相关的多语言翻译文本（zh/ja/en）
+  - deleteProject, deleteProjectConfirmTitle, deleteProjectConfirmDescription 等
+
+- 📄 **`src/components/CreateProjectModal.tsx`**：
+  - 描述说明改为非必填（去掉红色星号和 required 属性）
+  - 去掉一键生成按钮和相关函数
+  - 去掉「角色选定后不能切换哦~」提示文字
+  - 修改提交验证逻辑，只验证名称
+
+- 📄 **`src/components/Sidebar.tsx`**：
+  - 修复新创建项目点击后"当前项目"不更新的问题
+  - 当 URL 中的项目 ID 在当前列表中找不到时，自动重新加载项目列表
+  - **删除项目后 UI 改进**：
+    - 没有选中项目时（无 project 参数），不显示"当前项目"区域
+    - 不显示项目相关菜单（知识库、项目设置、测试对话、外部分享、数据看板）
+    - 只显示全局菜单（全部项目、对话数据）
+    - 项目被删除后自动清除当前项目状态
+
+- 📄 **`src/components/UploadKnowledgeModal.tsx`**：
+  - 暂时隐藏音视频上传功能（分析音视频选项）
+  - 调整网格布局为2列（本地文件 + 网站分析）
+
+---
+
+## 1.2.53 (2026-01-22)
+
+### 修复登录页面语言选择不生效的问题
+
+- 🐛 **问题现象**：登录页面选择日语后，进入管理页面显示中文
+- 🔍 **根因分析**：i18n 语言检测顺序配置错误
+  - `caches: ['localStorage']` - 用户选择的语言被保存到 localStorage ✓
+  - `order: ['navigator', 'htmlTag', 'path', 'subdomain']` - 但检测顺序中**未包含 `localStorage`** ✗
+  - 结果：页面跳转后 i18n 重新初始化，优先读取浏览器语言设置，忽略了用户选择
+- ✅ **解决方案**：将 `localStorage` 添加到检测顺序的最前面
+
+### 更新内容
+
+- 📄 **`src/i18n.ts`**：
+  - 修改 `detection.order`：`['localStorage', 'navigator', ...]`
+  - 确保用户手动选择的语言优先生效
+
+---
+
 ## 1.2.52 (2026-01-22)
 
 ### 修复语言切换后AI回复语言不正确的问题

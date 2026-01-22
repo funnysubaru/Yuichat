@@ -6,6 +6,7 @@
 // 1.0.2: 支持多个网站URL上传
 // 1.0.3: 默认显示3个URL输入框，实时URL格式验证，关闭时重置
 // 1.0.4: 添加拖拽上传界面
+// 1.2.54: 暂时隐藏音视频上传功能
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, FileText, Video, Globe, Upload, Plus, Trash2, CloudUpload, AlertCircle } from 'lucide-react';
@@ -343,7 +344,8 @@ export function UploadKnowledgeModal({ isOpen, onClose, onUpload }: UploadKnowle
               {/* Content */}
               <div className="p-6">
                 {!uploadType ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  // 1.2.54: 改为2列布局（隐藏音视频后）
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Local Files */}
                     <motion.button
                       whileHover={{ scale: 1.02 }}
@@ -368,7 +370,8 @@ export function UploadKnowledgeModal({ isOpen, onClose, onUpload }: UploadKnowle
                       </div>
                     </motion.button>
 
-                    {/* Audio/Video */}
+                    {/* 1.2.54: 暂时隐藏音视频上传功能 */}
+                    {/* Audio/Video - Hidden in 1.2.54
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
@@ -390,6 +393,7 @@ export function UploadKnowledgeModal({ isOpen, onClose, onUpload }: UploadKnowle
                         </p>
                       </div>
                     </motion.button>
+                    */}
 
                     {/* Website */}
                     <motion.button

@@ -1,11 +1,12 @@
 /**
  * 1.0.4: YUIChat 项目 - 创建项目模态框
  * 参考截图设计，包含知识库名称和描述说明
+ * 1.2.54: 描述说明改为非必填，去掉一键生成和角色提示
  */
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Sparkles } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface CreateProjectModalProps {
@@ -23,7 +24,8 @@ export function CreateProjectModal({ isOpen, onClose, onCreate }: CreateProjectM
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!name.trim() || !description.trim()) {
+    // 1.2.54: 只验证名称是否为空，描述非必填
+    if (!name.trim()) {
       return;
     }
 
@@ -39,12 +41,6 @@ export function CreateProjectModal({ isOpen, onClose, onCreate }: CreateProjectM
     } finally {
       setIsCreating(false);
     }
-  };
-
-  const handleOneClickGenerate = () => {
-    // TODO: 实现一键生成描述功能
-    // 这里可以调用 AI API 生成描述
-    setDescription(t('generatedDescriptionPlaceholder'));
   };
 
   if (!isOpen) return null;
@@ -105,45 +101,25 @@ export function CreateProjectModal({ isOpen, onClose, onCreate }: CreateProjectM
                   </div>
                 </div>
 
-                {/* 描述说明 */}
+                {/* 描述说明 - 1.2.54: 改为非必填，去掉一键生成 */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     {t('description')}
-                    <span className="text-red-500 ml-1">*</span>
                   </label>
-                  <div className="relative">
-                    <textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder={t('descriptionPlaceholder')}
-                      rows={6}
-                      required
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleOneClickGenerate}
-                      className="absolute bottom-3 right-3 px-3 py-1.5 text-xs bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors flex items-center gap-1"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      {t('oneClickGenerate')}
-                    </button>
-                  </div>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder={t('descriptionPlaceholder')}
+                    rows={6}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                  />
                 </div>
 
-                {/* 提示信息 */}
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <div className="w-4 h-4 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs">
-                    ●
-                  </div>
-                  <span>{t('roleSelectionHint')}</span>
-                </div>
-
-                {/* 底部按钮 */}
+                {/* 底部按钮 - 1.2.54: 只验证名称 */}
                 <div className="flex justify-end pt-4 border-t border-gray-200">
                   <button
                     type="submit"
-                    disabled={!name.trim() || !description.trim() || isCreating}
+                    disabled={!name.trim() || isCreating}
                     className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                   >
                     {isCreating ? t('creating') : t('create')}
