@@ -1,6 +1,7 @@
 /**
  * 1.1.2: 外部分享页面
  * 1.2.24: 更新为生成前端公开聊天链接（替代 Chainlit）
+ * 1.2.49: 分享链接附带当前语言参数，支持社交媒体多语言预览
  * 用于生成和管理直接面向用户的聊天链接，支持流式输出
  */
 
@@ -13,7 +14,7 @@ import { toast } from 'react-hot-toast';
 import { getCurrentUser } from '../services/authService'; // 1.1.14: 导入用户服务
 
 export function SharePage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation(); // 1.2.49: 添加 i18n 以获取当前语言
   const [searchParams] = useSearchParams(); // 1.1.14: 读取URL参数
   const [kb, setKb] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -65,8 +66,10 @@ export function SharePage() {
   }, [searchParams.get('project')]); // 1.1.14: 监听项目ID参数变化
 
   // 1.2.24: 使用前端 URL 替代 Chainlit URL，支持流式输出
+  // 1.2.49: 添加语言参数，让社交媒体预览显示对应语言
   const frontendBaseUrl = window.location.origin; // 自动获取当前域名
-  const shareUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}` : '';
+  const currentLang = i18n.language.split('-')[0]; // 获取当前语言（去除地区代码）
+  const shareUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}?lang=${currentLang}` : '';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrl);

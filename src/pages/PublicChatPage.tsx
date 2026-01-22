@@ -2,11 +2,12 @@
  * 1.2.24: 公开聊天页面 - 用于外部分享
  * 1.2.25: 修复高频问题和欢迎语无法显示的问题，传递知识库对象给 ChatInterface
  * 1.2.28: 添加多语言支持，集成 i18n 和语言切换器
+ * 1.2.49: 支持通过 URL 参数设置语言，让分享链接的语言与分享者一致
  * 无需登录即可访问，通过 share_token 识别知识库
  */
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChatInterface } from '../components/ChatInterface';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
@@ -15,10 +16,23 @@ import { Bot } from 'lucide-react';
 
 export function PublicChatPage() {
   const { shareToken } = useParams<{ shareToken: string }>();
+  const [searchParams] = useSearchParams(); // 1.2.49: 读取 URL 参数
   const { t, i18n } = useTranslation(); // 1.2.28: 集成 i18n
   const [kb, setKb] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 1.2.49: 从 URL 读取语言参数并设置 i18n 语言
+  useEffect(() => {
+    const langParam = searchParams.get('lang');
+    if (langParam && ['zh', 'en', 'ja'].includes(langParam)) {
+      // 只在语言参数与当前语言不同时切换
+      const currentLang = i18n.language.split('-')[0];
+      if (currentLang !== langParam) {
+        i18n.changeLanguage(langParam);
+      }
+    }
+  }, [searchParams, i18n]);
 
   useEffect(() => {
     async function loadKnowledgeBase() {

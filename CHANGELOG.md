@@ -1,5 +1,161 @@
 # Changelog
 
+## 1.2.49 (2026-01-22)
+
+### 分享链接预览内容优化
+
+- 🌐 **修复分享到 Line 等社交媒体时预览内容显示问题**：
+  - **根因分析**：OG meta tags 仍显示旧的 Dify 相关描述
+  - **解决方案**：更新产品描述，添加多语言支持
+
+### 更新内容
+
+- 📄 **`index.html`**：
+  - 更新 OG meta tags，移除 Dify 相关描述
+  - 标题更新为 "YUIChat - AI 智能知识库助手"
+  - 描述更新为 "企业级 AI 知识库管理平台，支持文档上传、智能问答和知识检索"
+  - 添加 og:image 标签（显示 logo）
+  - 添加 Twitter Card 支持
+  - 添加多语言 og:locale 支持（zh_CN、en_US、ja_JP）
+
+- 🆕 **`api/share/[token].ts`**（Vercel Edge Function）：
+  - 为分享链接生成动态 OG meta tags
+  - 支持检测社交媒体爬虫（Line、Facebook、Twitter、WhatsApp 等）
+  - 根据 URL 中的 `lang` 参数返回对应语言的预览内容
+  - 调试地址：`/api/share/{token}?lang=zh|en|ja`
+
+- 📄 **`src/pages/SharePage.tsx`**：
+  - 复制分享链接时自动附带当前语言参数（`?lang=zh|en|ja`）
+  - 确保用户点击链接后看到与分享者相同的语言界面
+
+- 📄 **`src/pages/PublicChatPage.tsx`**：
+  - 读取 URL 中的 `lang` 参数
+  - 自动切换 i18n 语言以匹配分享者的语言设置
+
+- 📄 **`vercel.json`**：
+  - 添加 API 路由配置
+
+### 工作原理
+
+1. 分享者在管理后台复制链接时，链接自动附带 `?lang=zh` 参数
+2. 用户点击链接后，前端读取语言参数并自动切换界面语言
+3. 社交媒体预览使用 index.html 中的静态 OG tags（中文）
+
+### 技术说明
+
+由于这是 Vite SPA 项目（非 SSR），社交媒体爬虫只能读取 index.html 中的静态 meta tags。
+如需完全动态的多语言 OG 预览，建议：
+- 方案 A：迁移到 Next.js（支持 SSR）
+- 方案 B：使用预渲染服务（如 prerender.io）
+- 方案 C：使用 Cloudflare Workers 拦截请求
+
+---
+
+## 1.2.48 (2026-01-22)
+
+### Office 文档处理依赖完善
+
+- 🐛 **修复上传文档报错 `No module named 'msoffcrypto'`**：
+  - **根因分析**：`unstructured` 库处理加密的 Office 文档时需要 `msoffcrypto-tool` 依赖
+  - **解决方案**：添加完整的 Office 文档处理依赖
+
+### 新增依赖
+
+- 📦 **`backend_py/requirements.txt`**：
+  - `msoffcrypto-tool` - 处理加密的 Office 文档（xlsx, docx, pptx）
+  - `xlrd` - 读取旧版 xls 文件格式
+  - `odfpy` - 读取 ODF 格式（LibreOffice 文档）
+  - `et-xmlfile` - openpyxl 依赖，处理 xlsx
+  - `defusedxml` - 安全的 XML 解析
+  - `python-magic` - 文件类型检测
+
+### 本地向量数据库切换
+
+- 🔧 **本地环境切换到使用 Supabase pgvector**：
+  - 修改 `backend_py/.env.local`：`USE_PGVECTOR=true`
+  - 配置本地数据库连接：`PGVECTOR_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54422/postgres`
+  - 不再依赖 ChromaDB，与生产环境保持一致
+
+### 支持的文件类型
+
+- PDF（pypdf）
+- DOCX/DOC（docx2txt）
+- XLSX/XLS（UnstructuredExcelLoader + openpyxl + xlrd）
+- PPTX（python-pptx）
+- TXT（自定义 TxtLoader，支持编码自动检测）
+
+---
+
+## 1.2.47 (2026-01-22)
+
+### 本地开发环境完全隔离
+
+- 🔧 **实现本地与生产环境完全隔离**：
+  - 修改 `supabase/config.toml` 端口配置，使用 544xx 系列端口避免与其他项目冲突
+  - 前端使用本地 Supabase（localhost:54421）
+  - 后端使用本地 Chroma 向量数据库（`USE_PGVECTOR=false`）
+  - 创建本地测试用户（test@yuichat.local / test123456）
+
+### 端口配置变更
+
+- 📄 **`supabase/config.toml`**：
+  - API: 54321 -> 54421
+  - Database: 54322 -> 54422
+  - Studio: 54323 -> 54423
+  - Inbucket: 54324 -> 54424
+  - Analytics: 54327 -> 54427
+  - Inspector: 8083 -> 8183
+
+### 数据库修复
+
+- 🐛 **修复分享链接无法被他人访问的问题**：
+  - **根因分析**：`knowledge_bases` 表的 RLS 策略只允许已登录用户访问自己的数据
+  - **影响**：未登录用户访问分享链接时，由于 `auth.uid()` 为空，RLS 策略阻止查询
+  - **解决方案**：添加新的 SELECT 策略，允许通过 `share_token` 公开访问知识库
+
+### 数据库迁移
+
+- 📄 **`20260122_add_public_share_policy.sql`**：
+  - 删除旧策略：`Users can view own knowledge bases`
+  - 添加新策略：`Public can view shared knowledge bases`
+  - 策略逻辑：允许已登录用户访问自己的知识库，或任何人访问有 share_token 的知识库
+
+---
+
+## 1.2.46 (2026-01-21)
+
+### 构建优化
+
+- ⚡ **大幅加速 Docker 构建时间**（预计从 ~470秒 降至 ~120秒）：
+  - **使用 Kaniko 构建器**：替代传统 Docker 构建，更好的层缓存支持
+  - **启用层缓存**：`--cache=true` + `--cache-ttl=168h` 缓存保留7天
+  - **Dockerfile 优化**：使用 BuildKit 语法 `--mount=type=cache` 缓存 pip 下载
+  - **优化层顺序**：稳定依赖在前，频繁变更的代码在后
+
+### 文件变更
+
+- 📄 **`backend_py/Dockerfile`**：添加 BuildKit 缓存挂载，优化层顺序
+- 📄 **`backend_py/cloudbuild.yaml`**：从 Docker 切换到 Kaniko 构建器
+- 📄 **`backend_py/deploy-gcp.sh`**：更新版本号
+
+---
+
+## 1.2.45 (2026-01-21)
+
+### 后端修复
+
+- 🐛 **修复 xlsx 和 pdf 文件学习失败问题**：
+  - 添加 `unstructured[xlsx]` 依赖，支持 Excel 文件处理
+  - 修改 `process_file` 错误处理，在生产环境中打印详细的堆栈跟踪
+  - 便于定位生产环境中的文件处理错误
+
+### 依赖更新
+
+- 📦 **`requirements.txt`**：
+  - 添加 `unstructured[xlsx]` 以支持 Excel 文件处理
+
+---
+
 ## 1.2.41 (2026-01-20)
 
 ### 前端优化
