@@ -974,7 +974,7 @@ async def get_frequent_questions(request: Request):
         
         # 1.2.11: 从向量库检索文档片段
         from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-        from langchain_community.vectorstores import Chroma
+        # 1.2.56: Chroma 改为条件导入，避免在使用 pgvector 时仍需安装 chromadb
         from langchain_core.prompts import ChatPromptTemplate
         import vecs
         
@@ -1092,6 +1092,8 @@ async def get_frequent_questions(request: Request):
                     # 回退到 Chroma（注意：Cloud Run 环境中可能无法访问本地文件系统）
                     logger.warning(f"Attempting Chroma fallback for collection: {collection_name} (may fail in Cloud Run)")
                     try:
+                        # 1.2.56: 条件导入 Chroma
+                        from langchain_community.vectorstores import Chroma
                         vectorstore = Chroma(
                             persist_directory=f"./chroma_db/{collection_name}",
                             embedding_function=OpenAIEmbeddings()
@@ -1121,6 +1123,8 @@ async def get_frequent_questions(request: Request):
                 if os.getenv("ENV") == "development":
                     print(f"🔍 DEBUG: Using Chroma, collection_name: {collection_name}")
                 try:
+                    # 1.2.56: 条件导入 Chroma
+                    from langchain_community.vectorstores import Chroma
                     vectorstore = Chroma(
                         persist_directory=f"./chroma_db/{collection_name}",
                         embedding_function=OpenAIEmbeddings()
@@ -1336,6 +1340,8 @@ XXXにはどのような特徴がありますか？
                         # Chroma 回退
                         if use_chroma_fallback and not found_doc:
                             try:
+                                # 1.2.56: 条件导入 Chroma
+                                from langchain_community.vectorstores import Chroma
                                 vectorstore = Chroma(
                                     persist_directory=f"./chroma_db/{collection_name}",
                                     embedding_function=OpenAIEmbeddings()

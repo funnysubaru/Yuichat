@@ -13,7 +13,8 @@ from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, Un
 from pptx_loader import GeneralPPTXLoader  # 1.2.42: PPT/PPTX 加载器
 from txt_loader import TxtLoader  # 1.2.42: TXT 文本加载器
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+# 1.2.56: Chroma 改为延迟导入，避免在使用 pgvector 时仍需安装 chromadb
+# from langchain_community.vectorstores import Chroma
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.documents import Document  # 1.1.12: 导入 Document 用于错误处理
@@ -28,6 +29,8 @@ load_dotenv()  # 回退到 .env
 
 # 1.1.3: 环境配置 - 支持本地/线上数据库切换
 USE_PGVECTOR = os.getenv("USE_PGVECTOR", "false").lower() == "true"
+# 1.2.56: 调试输出 - 确认配置是否正确加载
+print(f"🔧 USE_PGVECTOR 环境变量: {os.getenv('USE_PGVECTOR')} -> {USE_PGVECTOR}")
 # 1.1.17: 重命名为 PGVECTOR_DATABASE_URL 避免与 Chainlit 数据持久化冲突
 DATABASE_URL = os.getenv("PGVECTOR_DATABASE_URL") or os.getenv("DATABASE_URL")
 
@@ -38,6 +41,8 @@ MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "4"))
 RETRIEVE_K = int(os.getenv("RETRIEVE_K", "8"))
 
 # 1.1.3: 如果启用 pgvector，导入 vecs 库
+# 1.2.56: Chroma 改为条件导入，避免在使用 pgvector 时仍需安装 chromadb
+Chroma = None  # 延迟导入占位符
 if USE_PGVECTOR:
     try:
         import vecs
@@ -46,7 +51,9 @@ if USE_PGVECTOR:
     except ImportError:
         print("⚠️ vecs 库未安装，回退到 Chroma")
         USE_PGVECTOR = False
+        from langchain_community.vectorstores import Chroma
 else:
+    from langchain_community.vectorstores import Chroma
     print("✅ 使用 Chroma 作为本地向量数据库")
 
 # 定义状态
@@ -376,6 +383,20 @@ def embed_and_store_node(state: GraphState):
             metadatas = [doc.metadata for doc in splits]
             vectors = embeddings_model.embed_documents(texts)
             
+            # 1.2.56: 清理文本和 metadata 中的空字符（\u0000），防止 pgvector 插入失败
+            def clean_null_chars(obj):
+                """递归清理对象中的空字符"""
+                if isinstance(obj, str):
+                    return obj.replace('\x00', '').replace('\u0000', '')
+                elif isinstance(obj, dict):
+                    return {k: clean_null_chars(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [clean_null_chars(item) for item in obj]
+                return obj
+            
+            texts = [clean_null_chars(text) for text in texts]
+            metadatas = [clean_null_chars(metadata) for metadata in metadatas]
+            
             # 准备数据
             records = [
                 (f"{collection_name}_{i}", vector, {"text": text, **metadata})
@@ -393,14 +414,16 @@ def embed_and_store_node(state: GraphState):
                     print(f"  其中 {url_vectors} 个向量来自URL爬取")
         except Exception as e:
             print(f"❌ pgvector error: {e}, falling back to Chroma")
-            # 1.1.3: 出错时回退到 Chroma
-            vectorstore = Chroma.from_documents(
+            # 1.2.56: 回退时需要先导入 Chroma
+            from langchain_community.vectorstores import Chroma as ChromaFallback
+            vectorstore = ChromaFallback.from_documents(
                 documents=splits,
                 embedding=OpenAIEmbeddings(),
                 persist_directory=f"./chroma_db/{collection_name}"
             )
     else:
         # 1.1.0: 使用 Chroma 作为本地向量库（本地开发）
+        # 1.2.56: Chroma 已在条件导入块中导入
         vectorstore = Chroma.from_documents(
             documents=splits,
             embedding=OpenAIEmbeddings(),
@@ -492,8 +515,9 @@ def chat_node(state: GraphState):
             
         except Exception as e:
             print(f"❌ pgvector query error: {e}, falling back to Chroma")
-            # 1.1.3: 出错时回退到 Chroma
-            vectorstore = Chroma(
+            # 1.2.56: 回退时需要先导入 Chroma
+            from langchain_community.vectorstores import Chroma as ChromaFallback
+            vectorstore = ChromaFallback(
                 persist_directory=f"./chroma_db/{collection_name}",
                 embedding_function=OpenAIEmbeddings()
             )
@@ -526,6 +550,7 @@ def chat_node(state: GraphState):
                     print("⚠️ 警告: pgvector回退到Chroma后上下文为空或过短")
     else:
         # 使用 Chroma（本地开发）
+        # 1.2.56: Chroma 已在条件导入块中导入
         vectorstore = Chroma(
             persist_directory=f"./chroma_db/{collection_name}",
             embedding_function=OpenAIEmbeddings()
@@ -693,8 +718,9 @@ async def chat_node_stream(state: GraphState):
             
         except Exception as e:
             print(f"❌ pgvector query error: {e}, falling back to Chroma")
-            # 回退到 Chroma
-            vectorstore = Chroma(
+            # 1.2.56: 回退时需要先导入 Chroma
+            from langchain_community.vectorstores import Chroma as ChromaFallback
+            vectorstore = ChromaFallback(
                 persist_directory=f"./chroma_db/{collection_name}",
                 embedding_function=OpenAIEmbeddings()
             )
@@ -719,6 +745,7 @@ async def chat_node_stream(state: GraphState):
             context = "\n\n".join([doc.page_content for doc in relevant_docs])
     else:
         # 使用 Chroma（本地开发）
+        # 1.2.56: Chroma 已在条件导入块中导入
         vectorstore = Chroma(
             persist_directory=f"./chroma_db/{collection_name}",
             embedding_function=OpenAIEmbeddings()

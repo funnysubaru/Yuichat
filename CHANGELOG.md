@@ -1,5 +1,79 @@
 # Changelog
 
+## 1.2.56 (2026-01-22)
+
+### 修复本地环境文件上传失败的问题
+
+- 🐛 **问题现象**：本地环境上传 Excel、PDF、PPT 文件时报错 `400 Bad Request`
+- 🔍 **根因分析**：
+  - 存储桶 `knowledge-base-files` 在 `20260122000000_make_storage_private.sql` 迁移中被改为私有
+  - 但前端 `kbService.ts` 仍使用 `getPublicUrl()` 获取文件URL
+  - Python 后端尝试下载私有桶的公开URL，返回 400 错误
+- ✅ **解决方案**：使用 `createSignedUrl()` 生成带签名的临时访问URL（有效期1小时）
+
+### 统一本地环境使用 pgvector
+
+- 🔄 **变更**：本地环境默认使用 pgvector 替代 Chroma
+  - 与生产环境保持一致，避免环境差异导致的问题
+  - 本地 Supabase 已内置 pgvector 扩展 (v0.8.0)
+  - 无需额外安装 chromadb 依赖
+- 🐛 **修复 Chroma 导入错误**：将 Chroma 改为条件导入
+  - 仅在 `USE_PGVECTOR=false` 时才导入 `chromadb` 依赖
+  - 避免使用 pgvector 时仍报错 `Could not import chromadb python package`
+- 🐛 **修复 pgvector 空字符插入错误**：清理 PDF metadata 中的 `\u0000` 空字符
+  - PDF 文件的 producer 等元数据可能包含空字符
+  - 空字符会导致 `\u0000 cannot be converted to text` 错误
+  - 在插入前递归清理文本和 metadata 中的空字符
+
+### 更新内容
+
+- 📄 **`src/services/kbService.ts`**：
+  - 修改 `uploadFileToKB` 函数
+  - 将 `getPublicUrl()` 替换为 `createSignedUrl(filePath, 3600)`
+  - 签名URL有效期1小时，足够后端下载和处理文件
+
+- 📄 **`backend_py/workflow.py`**：
+  - 移除顶层 `from langchain_community.vectorstores import Chroma` 导入
+  - 改为在 `USE_PGVECTOR=false` 或 vecs 导入失败时才导入 Chroma
+  - 添加 `Chroma = None` 占位符
+
+- 📄 **`backend_py/app.py`**：
+  - 移除函数内的 Chroma 顶层导入
+  - 在实际使用 Chroma 的位置添加条件导入
+
+- 📄 **`backend_py/env.example`**：
+  - 更新 `USE_PGVECTOR=true`（默认启用 pgvector）
+  - 添加本地 Supabase 连接字符串示例
+  - 本地连接：`postgresql://postgres:postgres@127.0.0.1:54422/postgres`
+
+---
+
+## 1.2.55 (2026-01-22)
+
+### 空知识库测试对话提示功能
+
+- ➕ **新功能**：当项目没有上传任何知识库文档时，测试对话页面显示友好提示
+  - 显示提示消息："还没有上传任何知识～请立即前往知识库上传吧"
+  - 提供「立即前往」按钮，点击跳转到知识库页面
+  - 输入框被禁用，无法输入内容进行对话
+  - 输入框占位符显示："请先上传知识库文档"
+
+### 更新内容
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 添加 `hasDocuments` 和 `loadingDocuments` 状态变量
+  - 在加载知识库后查询 documents 表检查文档数量
+  - 当 `hasDocuments === false` 时显示空知识库提示界面
+  - 输入框和发送按钮在无文档时被禁用
+
+- 📄 **`src/i18n.ts`**：
+  - 添加空知识库相关的多语言翻译文本（zh/ja/en）
+  - `emptyKnowledgeBaseMessage`: 空知识库提示消息
+  - `goToKnowledgeBase`: 跳转按钮文本
+  - `emptyKnowledgeBasePlaceholder`: 禁用时输入框占位符
+
+---
+
 ## 1.2.54 (2026-01-22)
 
 ### 添加删除项目功能

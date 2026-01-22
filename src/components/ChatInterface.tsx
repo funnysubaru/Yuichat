@@ -9,6 +9,7 @@
  * 1.2.17: 输入框固定在网页最下方，使用fixed定位
  * 1.2.23: 实现项目头像显示功能，消息列表和加载状态都使用项目设置的头像，未设置时使用默认头像
  * 1.2.52: 修复语言切换后AI回复语言不正确的问题，在聊天请求中传递language参数
+ * 1.2.55: 当知识库没有文档时，显示提示信息并禁用输入框
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -87,6 +88,9 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
   // 1.2.12: 初始化为true，避免首次渲染显示默认问题
   // 如果知识库没有配置的推荐问题，需要从API获取，应该显示loading状态
   const [loadingQuestions, setLoadingQuestions] = useState(true);
+  // 1.2.55: 跟踪知识库是否有文档
+  const [hasDocuments, setHasDocuments] = useState<boolean | null>(null);
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const previousPathRef = useRef<string>(''); // 1.2.2: 记录上一个路由路径
@@ -215,7 +219,28 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         
         setCurrentKb(kb);
         setCurrentKbId(kb.id);
-        
+
+        // 1.2.55: 检查知识库是否有文档
+        setLoadingDocuments(true);
+        try {
+          const { count, error: countError } = await supabase
+            .from('documents')
+            .select('*', { count: 'exact', head: true })
+            .eq('knowledge_base_id', kb.id);
+
+          if (!countError) {
+            setHasDocuments(count !== null && count > 0);
+          } else {
+            logger.error('Error checking documents count:', countError);
+            setHasDocuments(null);
+          }
+        } catch (docError) {
+          logger.error('Error checking documents:', docError);
+          setHasDocuments(null);
+        } finally {
+          setLoadingDocuments(false);
+        }
+
         // 1.2.11: 如果知识库变化，重置配置加载标记
         if (previousKbId && previousKbId !== kb.id) {
           configLoadedRef.current = null;
@@ -1137,9 +1162,39 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         {/* 1.2.17: 对话消息区域 - 可滚动，为底部固定输入框留出空间 */}
         <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-24 space-y-4 min-h-0">
         {messages.length === 0 ? (
+          // 1.2.55: 如果知识库没有文档，显示空知识库提示
+          !loadingDocuments && hasDocuments === false ? (
+            <div className="flex flex-col min-h-full py-8">
+              {/* 空知识库提示 - 聊天消息样式 */}
+              <div className="flex gap-3 justify-start">
+                {/* AI头像 */}
+                <div className="flex-shrink-0">
+                  <Avatar avatarUrl={getAvatarUrl()} size="md" />
+                </div>
+
+                {/* 提示消息气泡 */}
+                <div className="flex-1 max-w-3xl">
+                  <div className="bg-gray-100 rounded-2xl px-4 py-3 inline-block">
+                    <p className="text-gray-800 leading-relaxed">
+                      {t('emptyKnowledgeBaseMessage')}
+                    </p>
+                  </div>
+                  {/* 跳转按钮 */}
+                  <div className="mt-4">
+                    <a
+                      href={`/knowledge-base?project=${projectId}`}
+                      className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors text-sm font-medium"
+                    >
+                      {t('goToKnowledgeBase')}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
           // 1.2.7: 优化欢迎界面UI，使其更像聊天消息样式
           // 1.2.12: 如果chatConfig还未加载或问题还在加载中，显示loading状态，避免欢迎语和问题不同步显示
-          !chatConfig || loadingQuestions ? (
+          !chatConfig || loadingQuestions || loadingDocuments ? (
             <div className="flex flex-col min-h-full py-8">
               {/* Loading状态 - 聊天消息样式 */}
               <div className="flex gap-3 justify-start">
@@ -1152,13 +1207,13 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                     <div className="w-10 h-10 bg-gray-200 rounded-full animate-pulse"></div>
                   )}
                 </div>
-                
+
                 {/* Loading消息气泡 */}
                 <div className="flex-1 max-w-3xl">
                   <div className="bg-gray-100 rounded-2xl px-4 py-3 inline-block">
                     <div className="flex items-center gap-2">
                       {/* YUI旋转放大缩小动画 */}
-                      <span 
+                      <span
                         className="inline-block text-primary font-semibold yui-loading-animation"
                       >
                         YUI
@@ -1180,7 +1235,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                 <div className="flex-shrink-0">
                   <Avatar avatarUrl={getAvatarUrl()} size="md" />
                 </div>
-                
+
                 {/* 欢迎语消息气泡 */}
                 <div className="flex-1 max-w-3xl">
                   <div className="bg-gray-100 rounded-2xl px-4 py-3 inline-block">
@@ -1190,12 +1245,12 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                   </div>
                 </div>
               </div>
-            
+
             {/* 推荐问题按钮 - 1.2.12: 所有内容加载完成后一起显示 */}
             <div className="space-y-3 max-w-3xl ml-[52px]" key={chatConfig?.recommendedQuestions?.join(',') || 'default'}>
               {/* 1.2.39: 简化渲染逻辑，直接渲染推荐问题或默认问题 */}
-              {(chatConfig?.recommendedQuestions && chatConfig.recommendedQuestions.length > 0 
-                ? chatConfig.recommendedQuestions 
+              {(chatConfig?.recommendedQuestions && chatConfig.recommendedQuestions.length > 0
+                ? chatConfig.recommendedQuestions
                 : [t('defaultQuestion1'), t('defaultQuestion2'), t('defaultQuestion3')]
               ).map((question: string, index: number) => (
                 <motion.button
@@ -1217,14 +1272,14 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                 </motion.button>
               ))}
             </div>
-            
+
             {/* 1.2.8: 添加免责声明 */}
             {/* 1.2.28: 使用 i18n 翻译免责声明 */}
             <div className="mt-6 ml-[52px] text-xs text-gray-400">
               {t('aiGeneratedDisclaimer')}
             </div>
           </div>
-          )
+          ))
         ) : (
           messages.map((message) => {
             // 1.2.10: 当消息状态为streaming时，完全隐藏这个消息，只显示isTyping的loading行
@@ -1281,11 +1336,24 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       </div>
 
       {/* 1.2.17: 输入框固定在网页最下方 */}
+      {/* 1.2.55: 当知识库没有文档时禁用输入框 */}
       <div className="fixed bottom-0 right-0 border-t border-gray-200 bg-white z-40" style={{ left: `${sidebarWidth}px` }}>
         <div className="px-4 py-4">
           <div className="flex gap-2">
-            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyPress={handleKeyPress} placeholder={t('chatInputPlaceholder')} disabled={isTyping} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed" />
-            <button onClick={handleSend} disabled={!input.trim() || isTyping} className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={hasDocuments === false ? t('emptyKnowledgeBasePlaceholder') : t('chatInputPlaceholder')}
+              disabled={isTyping || hasDocuments === false}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isTyping || hasDocuments === false}
+              className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
               {isTyping ? <span className="inline-block text-white font-semibold yui-loading-animation text-xs">YUI</span> : <Send className="w-5 h-5" />}
             </button>
           </div>

@@ -1,4 +1,4 @@
-// 1.2.54: YUIChat 项目 - 国际化配置 (添加删除项目功能多语言)
+// 1.2.55: YUIChat 项目 - 国际化配置 (添加空知识库提示多语言)
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
@@ -298,6 +298,11 @@ const resources = {
       deleteProjectConfirmDescription: '此操作将永久删除项目「{{projectName}}」及其所有文档和对话记录。此操作不可恢复，是否继续？',
       deleteProjectSuccess: '项目删除成功',
       deleteProjectFailed: '项目删除失败',
+
+      // 1.2.55: 空知识库提示
+      emptyKnowledgeBaseMessage: '还没有上传任何知识～请立即前往知识库上传吧',
+      goToKnowledgeBase: '立即前往',
+      emptyKnowledgeBasePlaceholder: '请先上传知识库文档',
     }
   },
   ja: {
@@ -585,6 +590,11 @@ const resources = {
       deleteProjectConfirmDescription: 'この操作はプロジェクト「{{projectName}}」とそのすべてのドキュメントと会話記録を完全に削除します。この操作は取り消すことができません。続行しますか？',
       deleteProjectSuccess: 'プロジェクトの削除に成功しました',
       deleteProjectFailed: 'プロジェクトの削除に失敗しました',
+
+      // 1.2.55: 空のナレッジベースメッセージ
+      emptyKnowledgeBaseMessage: 'まだ知識がアップロードされていません。今すぐナレッジベースにアップロードしてください',
+      goToKnowledgeBase: '今すぐ移動',
+      emptyKnowledgeBasePlaceholder: '先にナレッジベースにドキュメントをアップロードしてください',
     }
   },
   en: {
@@ -872,6 +882,11 @@ const resources = {
       deleteProjectConfirmDescription: 'This action will permanently delete the project "{{projectName}}" along with all its documents and conversation records. This action cannot be undone. Continue?',
       deleteProjectSuccess: 'Project deleted successfully',
       deleteProjectFailed: 'Failed to delete project',
+
+      // 1.2.55: Empty knowledge base message
+      emptyKnowledgeBaseMessage: 'No knowledge uploaded yet. Please go to the knowledge base to upload now',
+      goToKnowledgeBase: 'Go Now',
+      emptyKnowledgeBasePlaceholder: 'Please upload documents to the knowledge base first',
     }
   }
 };
