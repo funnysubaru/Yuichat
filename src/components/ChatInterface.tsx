@@ -8,6 +8,7 @@
  * 1.2.16: 优化布局，输入框固定在底部，对话记录改为浮窗形式
  * 1.2.17: 输入框固定在网页最下方，使用fixed定位
  * 1.2.23: 实现项目头像显示功能，消息列表和加载状态都使用项目设置的头像，未设置时使用默认头像
+ * 1.2.52: 修复语言切换后AI回复语言不正确的问题，在聊天请求中传递language参数
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -733,6 +734,10 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         });
       }
       
+      // 1.2.52: 添加语言参数，确保AI回复使用正确的语言
+      const currentLangNonStream = i18n.language.split('-')[0];
+      const langNonStream = ['zh', 'en', 'ja'].includes(currentLangNonStream) ? currentLangNonStream : 'zh';
+      
       const response = await fetch(`${PY_BACKEND_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -741,6 +746,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
           kb_id: currentKb.share_token,
           conversation_history: conversationHistory,
           user_id: user?.id,
+          language: langNonStream, // 1.2.52: 传递语言参数
         }),
       });
 
@@ -868,6 +874,10 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       }
       
       // 1.2.24: 使用流式端点实现实时显示
+      // 1.2.52: 添加语言参数，确保AI回复使用正确的语言
+      const currentLang = i18n.language.split('-')[0];
+      const lang = ['zh', 'en', 'ja'].includes(currentLang) ? currentLang : 'zh';
+      
       const response = await fetch(`${PY_BACKEND_URL}/api/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -876,6 +886,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
           kb_id: currentKb.share_token, // 1.1.15: 使用当前项目的 share_token
           conversation_history: conversationHistory,
           user_id: user?.id, // 1.1.15: 传递用户ID用于权限验证
+          language: lang, // 1.2.52: 传递语言参数
         }),
       });
 
@@ -982,7 +993,10 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
   };
 
   // 1.2.25: 改为指向前端公开分享页面，替代 Chainlit
-  const publicShareUrl = currentKb ? `${window.location.origin}/share/${currentKb.share_token}` : '';
+  // 1.2.52: 从内部测试打开时携带当前语言参数，让公开页面继承语言设置
+  const currentLangForShare = i18n.language.split('-')[0];
+  const langForShare = ['zh', 'en', 'ja'].includes(currentLangForShare) ? currentLangForShare : 'zh';
+  const publicShareUrl = currentKb ? `${window.location.origin}/share/${currentKb.share_token}?lang=${langForShare}` : '';
   // 保留 chainlitUrl 用于错误提示中的链接（向后兼容）
   const chainlitUrl = currentKb ? `${import.meta.env.VITE_CHAINLIT_URL || 'http://localhost:8000'}/?kb_id=${currentKb.share_token}` : '';
 
@@ -1096,24 +1110,25 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* 1.1.2: 顶部提示栏 */}
         {/* 1.2.25: 公开模式下不显示内部测试提示 */}
+        {/* 1.2.52: 使用 i18n 多语言 */}
         {!isPublicMode && (
           <div className="bg-purple-50 px-4 py-2 border-b border-purple-100 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-4">
-              <span className="text-xs text-purple-700">这是内部测试界面。</span>
+              <span className="text-xs text-purple-700">{t('internalTestInterface')}</span>
               {/* 1.1.10: 新建对话按钮 */}
               {messages.length > 0 && (
                 <button
                   onClick={handleNewConversation}
                   className="text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
                 >
-                  新建对话
+                  {t('newChat')}
                 </button>
               )}
             </div>
             {/* 1.2.25: 改为指向公开分享页面 */}
             {publicShareUrl && (
               <a href={publicShareUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-purple-600 flex items-center gap-1 hover:text-purple-700 hover:underline">
-                打开公开分享页面 <ExternalLink className="w-3 h-3" />
+                {t('openPublicSharePage')} <ExternalLink className="w-3 h-3" />
               </a>
             )}
           </div>

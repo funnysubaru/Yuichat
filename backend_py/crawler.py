@@ -1,6 +1,10 @@
 """
 1.1.12: URL爬虫模块 - 重构版本
 完全按照参考代码实现，使用 Selenium + unstructured 库
+1.2.44: 修复生产环境（Docker/Cloud Run）中 Chromium 驱动无法启动的问题
+       - 自动检测系统级 Chromium 和 chromedriver
+       - 生产环境使用 Docker 预装的 /usr/bin/chromium 和 /usr/bin/chromedriver
+       - 开发环境继续使用 webdriver-manager 自动管理
 """
 
 import os
@@ -127,22 +131,35 @@ class SeleniumChromeURLLoader(BaseLoader):
             chrome_options.add_argument("--disable-infobars")
         
         # 1.2.39: 使用 webdriver-manager 自动管理 ChromeDriver
-        # 禁用 Selenium Manager，强制使用 webdriver-manager
+        # 1.2.44: 生产环境使用 Docker 安装的 chromium-driver
         import os as _os
-        _os.environ['SE_MANAGER_OFFLINE'] = 'true'  # 禁用 Selenium Manager 自动下载
-        
+
         if self.executable_path is None:
-            try:
-                # 使用 webdriver-manager 自动下载和管理 ChromeDriver
-                driver_path = ChromeDriverManager().install()
+            # 1.2.44: 生产环境检测 - 如果存在 /usr/bin/chromium-driver，直接使用
+            chromium_driver_path = '/usr/bin/chromedriver'
+            chromium_binary_path = '/usr/bin/chromium'
+
+            if _os.path.exists(chromium_driver_path) and _os.path.exists(chromium_binary_path):
+                # 1.2.44: 生产环境 - 使用 Docker 预装的 Chromium
                 if _os.getenv("ENV") == "development":
-                    logger.info(f"Using ChromeDriver from webdriver-manager: {driver_path}")
-                service = ChromeService(driver_path)
+                    logger.info(f"Using system Chromium driver: {chromium_driver_path}")
+                chrome_options.binary_location = chromium_binary_path
+                service = ChromeService(chromium_driver_path)
                 return Chrome(service=service, options=chrome_options)
-            except Exception as e:
-                if _os.getenv("ENV") == "development":
-                    logger.warning(f"webdriver-manager failed: {e}")
-                raise e  # 不再回退，直接抛出错误
+            else:
+                # 1.2.44: 开发环境 - 使用 webdriver-manager 自动下载
+                # 1.2.39: 禁用 Selenium Manager，强制使用 webdriver-manager
+                _os.environ['SE_MANAGER_OFFLINE'] = 'true'
+                try:
+                    driver_path = ChromeDriverManager().install()
+                    if _os.getenv("ENV") == "development":
+                        logger.info(f"Using ChromeDriver from webdriver-manager: {driver_path}")
+                    service = ChromeService(driver_path)
+                    return Chrome(service=service, options=chrome_options)
+                except Exception as e:
+                    if _os.getenv("ENV") == "development":
+                        logger.warning(f"webdriver-manager failed: {e}")
+                    raise e
         return Chrome(executable_path=self.executable_path, options=chrome_options)
 
     def load(self) -> List[Document]:

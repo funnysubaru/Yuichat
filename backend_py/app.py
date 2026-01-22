@@ -39,11 +39,11 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # 1.2.24: 创建独立的 FastAPI 应用，替代 Chainlit
-# 1.2.36: 更新版本号
+# 1.2.43: 更新版本号 - 支持从 URL 下载文件后处理
 fastapi_app = FastAPI(
     title="YUIChat API",
     description="YUIChat 后端 API，提供知识库管理和聊天功能",
-    version="1.2.39"
+    version="1.2.52"  # 1.2.52: 修复语言切换后AI回复语言不正确的问题
 )
 
 # 1.2.24: 添加 CORS 中间件，允许前端访问
@@ -56,14 +56,14 @@ fastapi_app.add_middleware(
 )
 
 # 1.2.35: 健康检查端点（用于 Cloud Run）
-# 1.2.36: 更新版本号
+# 1.2.43: 更新版本号 - 支持从 URL 下载文件后处理
 @fastapi_app.get("/health")
 async def health_check():
     """健康检查端点，用于 Cloud Run 健康检查"""
     return {
         "status": "healthy",
         "service": "YUIChat API",
-        "version": "1.2.39"
+        "version": "1.2.51"  # 1.2.51: 修复多语言文档高频问题检索
     }
 
 @fastapi_app.post("/api/process-file")
@@ -236,6 +236,11 @@ async def process_file(request: Request):
             "message": "File processed and indexed"
         })
     except Exception as e:
+        # 1.2.45: 打印详细错误日志，便于生产环境调试
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"❌ process_file error: {str(e)}")
+        print(f"   Traceback:\n{error_traceback}")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 # 1.1.13: 添加URL爬虫 API 端点（加强知识库隔离）
@@ -510,6 +515,11 @@ async def chat(request: Request):
         kb_token = data.get("kb_id")  # share_token 或 vector_collection
         conversation_history = data.get("conversation_history", [])
         user_id = data.get("user_id")  # 1.1.13: 可选，用于权限验证
+        language = data.get("language", "zh")  # 1.2.52: 语言参数，默认中文
+        
+        # 1.2.52: 标准化语言代码
+        if language not in ["zh", "en", "ja"]:
+            language = "zh"
         
         if not query:
             raise HTTPException(status_code=400, detail="Missing query")
@@ -586,6 +596,7 @@ async def chat(request: Request):
         messages.append(HumanMessage(content=query))
         
         # 1.1.10: 准备状态并调用工作流
+        # 1.2.52: 添加 language 参数，支持多语言回复
         state = {
             "messages": messages,
             "collection_name": collection_name,
@@ -593,7 +604,8 @@ async def chat(request: Request):
             "docs": [],
             "splits": [],
             "context": "",
-            "answer": ""
+            "answer": "",
+            "language": language  # 1.2.52: 语言设置
         }
         
         # 执行工作流（只执行 chat 节点）
@@ -630,6 +642,11 @@ async def chat_stream(request: Request):
         kb_token = data.get("kb_id")  # share_token 或 vector_collection
         conversation_history = data.get("conversation_history", [])
         user_id = data.get("user_id")  # 可选，用于权限验证
+        language = data.get("language", "zh")  # 1.2.52: 语言参数，默认中文
+        
+        # 1.2.52: 标准化语言代码
+        if language not in ["zh", "en", "ja"]:
+            language = "zh"
         
         if not query:
             raise HTTPException(status_code=400, detail="Missing query")
@@ -696,6 +713,7 @@ async def chat_stream(request: Request):
         messages.append(HumanMessage(content=query))
         
         # 准备状态
+        # 1.2.52: 添加 language 参数，支持多语言回复
         state = {
             "messages": messages,
             "collection_name": collection_name,
@@ -703,7 +721,8 @@ async def chat_stream(request: Request):
             "docs": [],
             "splits": [],
             "context": "",
-            "answer": ""
+            "answer": "",
+            "language": language  # 1.2.52: 语言设置
         }
         
         # 1.2.24: 定义 SSE 流式生成器
@@ -963,13 +982,18 @@ async def get_frequent_questions(request: Request):
         sample_docs = []
         try:
             # 1.2.11: 使用通用查询词检索文档
-            query_texts = {
+            # 1.2.48: 改进查询策略 - 使用所有语言的查询词，以适应多语言文档
+            query_texts_all = {
                 "zh": ["介绍", "说明", "概述", "功能", "使用方法"],
                 "en": ["introduction", "overview", "features", "how to use", "description"],
                 "ja": ["紹介", "概要", "機能", "使い方", "説明"]
             }
             
-            query_words = query_texts.get(language, query_texts["zh"])
+            # 1.2.48: 合并所有语言的查询词（优先使用用户界面语言的查询词）
+            query_words = query_texts_all.get(language, query_texts_all["zh"])[:2]  # 取前2个
+            for lang, words in query_texts_all.items():
+                if lang != language:
+                    query_words.extend(words[:2])  # 其他语言各取前2个
             
             # 根据配置选择向量数据库
             USE_PGVECTOR = os.getenv("USE_PGVECTOR", "false").lower() == "true"
@@ -983,49 +1007,83 @@ async def get_frequent_questions(request: Request):
                     collection = vx.get_collection(name=collection_name)
                     embeddings_model = OpenAIEmbeddings()
                     
-                    # 1.2.39: 并行生成所有查询词的 embeddings
-                    query_words_to_use = query_words[:3]  # 只使用前3个查询词
-                    if os.getenv("ENV") == "development":
-                        print(f"🔍 DEBUG: Parallel embedding {len(query_words_to_use)} query words")
-                    
-                    # 并行调用 embed_query
-                    query_vectors = await asyncio.gather(*[
-                        asyncio.to_thread(embeddings_model.embed_query, word)
-                        for word in query_words_to_use
-                    ])
-                    
-                    # 对每个查询词检索文档
+                    # 1.2.48: 首先尝试直接从数据库获取样本文档（更可靠）
+                    # 通过随机采样获取文档，避免依赖查询词匹配
                     all_results = []
-                    for idx, query_word in enumerate(query_words_to_use):
-                        query_vector = query_vectors[idx]
-                        # 1.2.39: vecs 0.4.5 API: data 替代 query_vector
-                        results = collection.query(
-                            data=query_vector,
-                            limit=2,
-                            include_value=False,
-                            include_metadata=True
-                        )
-                        logger.info(f"pgvector query for '{query_word}' returned {len(results)} results")
-                        for record in results:
-                            # 1.2.39: vecs 返回格式: (id, metadata)
-                            if len(record) > 1 and record[1]:  # 确保有metadata
-                                text = record[1].get("text", "")
-                                metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
-                                is_error = (
-                                    'error' in metadata or 
-                                    '爬取失败' in text or 
-                                    '解析失败' in text or
-                                    text.strip().startswith('爬取失败') or
-                                    text.strip().startswith('解析失败')
-                                )
-                                if not is_error and text.strip() and len(text.strip()) > 50:
-                                    all_results.append(text)
+                    try:
+                        from sqlalchemy import text
+                        # 直接从 pgvector 表中随机获取有效文档
+                        with vx.engine.connect() as conn:
+                            result = conn.execute(text(f'''
+                                SELECT metadata->>'text' as text_content
+                                FROM vecs."{collection_name}"
+                                WHERE LENGTH(metadata->>'text') > 100
+                                ORDER BY RANDOM()
+                                LIMIT 10
+                            '''))
+                            for row in result:
+                                text_content = row[0] if row[0] else ""
+                                if text_content and len(text_content.strip()) > 50:
+                                    is_error = (
+                                        '爬取失败' in text_content or 
+                                        '解析失败' in text_content or
+                                        text_content.strip().startswith('爬取失败') or
+                                        text_content.strip().startswith('解析失败')
+                                    )
+                                    if not is_error:
+                                        all_results.append(text_content)
+                        logger.info(f"Direct SQL query returned {len(all_results)} valid documents")
+                        if os.getenv("ENV") == "development":
+                            print(f"✅ DEBUG: Direct SQL returned {len(all_results)} documents")
+                    except Exception as sql_error:
+                        logger.warning(f"Direct SQL query failed: {sql_error}, falling back to vector search")
+                        if os.getenv("ENV") == "development":
+                            print(f"⚠️ DEBUG: Direct SQL failed: {sql_error}, using vector search")
+                    
+                    # 如果直接查询失败或结果不足，使用向量搜索
+                    if len(all_results) < 3:
+                        # 1.2.39: 并行生成所有查询词的 embeddings
+                        query_words_to_use = query_words[:6]  # 使用更多查询词
+                        if os.getenv("ENV") == "development":
+                            print(f"🔍 DEBUG: Parallel embedding {len(query_words_to_use)} query words: {query_words_to_use}")
+                        
+                        # 并行调用 embed_query
+                        query_vectors = await asyncio.gather(*[
+                            asyncio.to_thread(embeddings_model.embed_query, word)
+                            for word in query_words_to_use
+                        ])
+                        
+                        # 对每个查询词检索文档
+                        for idx, query_word in enumerate(query_words_to_use):
+                            query_vector = query_vectors[idx]
+                            # 1.2.39: vecs 0.4.5 API: data 替代 query_vector
+                            results = collection.query(
+                                data=query_vector,
+                                limit=3,  # 增加每个查询的返回数量
+                                include_value=False,
+                                include_metadata=True
+                            )
+                            logger.info(f"pgvector query for '{query_word}' returned {len(results)} results")
+                            for record in results:
+                                # 1.2.39: vecs 返回格式: (id, metadata)
+                                if len(record) > 1 and record[1]:  # 确保有metadata
+                                    text = record[1].get("text", "")
+                                    metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
+                                    is_error = (
+                                        'error' in metadata or 
+                                        '爬取失败' in text or 
+                                        '解析失败' in text or
+                                        text.strip().startswith('爬取失败') or
+                                        text.strip().startswith('解析失败')
+                                    )
+                                    if not is_error and text.strip() and len(text.strip()) > 50:
+                                        all_results.append(text)
                     
                     # 去重并限制数量
                     sample_docs = list(dict.fromkeys(all_results))[:10]  # 最多10个文档片段
                     logger.info(f"Retrieved {len(sample_docs)} valid documents from pgvector for collection: {collection_name}")
                     if os.getenv("ENV") == "development":
-                        print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from pgvector (parallel)")
+                        print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from pgvector")
                 except Exception as e:
                     logger.error(f"pgvector query failed for collection {collection_name}: {str(e)}", exc_info=True)
                     logger.warning(f"Falling back to Chroma for collection: {collection_name}")

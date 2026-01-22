@@ -1,6 +1,9 @@
-# 1.2.40: Cloud Build 配置 - 支持镜像层缓存加速构建
-# 使用 Artifact Registry 替代已弃用的 Container Registry (gcr.io)
-# 参考: https://cloud.google.com/build/docs/optimize-builds/speeding-up-builds
+# 1.2.46: Cloud Build 配置 - 使用 Kaniko 加速构建
+# Kaniko 优势：
+# - 更好的层缓存支持
+# - 无需 Docker daemon
+# - 支持 BuildKit 语法
+# 参考: https://cloud.google.com/build/docs/optimize-builds/kaniko-cache
 
 timeout: 1200s  # 20分钟超时
 
@@ -11,57 +14,33 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
-  # Step 1: 拉取缓存镜像（如果存在）
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'pull-cache'
-    entrypoint: 'bash'
+  # 1.2.46: 使用 Kaniko 构建（更好的缓存支持）
+  - name: 'gcr.io/kaniko-project/executor:latest'
+    id: 'build-and-push'
     args:
-      - '-c'
-      - |
-        docker pull ${_IMAGE}:cache || echo "No cache image found, building from scratch"
-
-  # Step 2: 使用缓存构建新镜像
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'build'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        docker build \
-          --cache-from ${_IMAGE}:cache \
-          -t ${_IMAGE}:${SHORT_SHA} \
-          -t ${_IMAGE}:${_VERSION} \
-          -t ${_IMAGE}:cache \
-          -t ${_IMAGE}:latest \
-          .
-    waitFor: ['pull-cache']
-
-  # Step 3: 并行推送所有标签
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'push-sha'
-    args: ['push', '${_IMAGE}:${SHORT_SHA}']
-    waitFor: ['build']
-
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'push-version'
-    args: ['push', '${_IMAGE}:${_VERSION}']
-    waitFor: ['build']
-
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'push-cache'
-    args: ['push', '${_IMAGE}:cache']
-    waitFor: ['build']
-
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'push-latest'
-    args: ['push', '${_IMAGE}:latest']
-    waitFor: ['build']
+      - '--dockerfile=Dockerfile'
+      - '--context=.'
+      # 目标镜像（多标签）
+      - '--destination=${_IMAGE}:${SHORT_SHA}'
+      - '--destination=${_IMAGE}:${_VERSION}'
+      - '--destination=${_IMAGE}:latest'
+      # 缓存配置 - 这是加速的关键！
+      - '--cache=true'
+      - '--cache-ttl=168h'  # 缓存保留7天
+      - '--cache-repo=${_IMAGE}/cache'
+      # 快照模式 - 更快的层检测
+      - '--snapshot-mode=redo'
+      # 压缩级别 - 平衡构建速度和镜像大小
+      - '--compressed-caching=false'
+      # 使用新的快照器（更快）
+      - '--use-new-run=true'
+      # 跳过 TLS 验证（Artifact Registry 不需要）
+      - '--skip-tls-verify-registry=${_IMAGE}'
 
 # 声明构建产物
 images:
   - '${_IMAGE}:${SHORT_SHA}'
   - '${_IMAGE}:${_VERSION}'
-  - '${_IMAGE}:cache'
   - '${_IMAGE}:latest'
 
 # 替换变量（由 gcloud builds submit 传入）

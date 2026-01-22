@@ -17,6 +17,13 @@ vecs
 tiktoken
 asyncpg
 cachetools  # 1.2.39: 高频问题缓存
+# 1.2.42: PPT/PPTX 文件处理依赖
+python-pptx  # 1.2.42: PPT/PPTX 文件解析
+chardet  # 1.2.42: 文本编码自动检测
+# 1.2.42: 可选依赖 - 图片OCR（需要系统安装 tesseract-ocr）
+# pillow  # 图片处理（已通过其他依赖安装）
+# opencv-python  # 图像预处理
+# pytesseract  # OCR文字识别
 # 1.1.11: URL爬虫依赖（保留作为可选加载器）
 playwright
 beautifulsoup4
@@ -25,4 +32,13 @@ lxml
 selenium
 webdriver-manager
 unstructured[html]
+# 1.2.45: 添加 xlsx 文件处理支持
+unstructured[xlsx]
 requests
+# 1.2.48: Office 文档处理完整依赖
+msoffcrypto-tool  # 1.2.48: 处理加密的 Office 文档（xlsx, docx, pptx）
+xlrd  # 1.2.48: 读取旧版 xls 文件格式
+odfpy  # 1.2.48: 读取 ODF 格式（LibreOffice 文档）
+et-xmlfile  # 1.2.48: openpyxl 依赖，处理 xlsx
+defusedxml  # 1.2.48: 安全的 XML 解析
+python-magic  # 1.2.48: 文件类型检测（可选，提升兼容性）

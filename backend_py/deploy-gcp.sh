@@ -1,8 +1,8 @@
 #!/bin/bash
-# 1.2.40: GCP Cloud Run 部署脚本 (优化版)
+# 1.2.46: GCP Cloud Run 部署脚本 (优化版)
 # 优化内容：
 # - 使用 Artifact Registry 替代已弃用的 gcr.io
-# - 使用 Cloud Build 镜像层缓存加速构建
+# - 1.2.46: 使用 Kaniko 构建器 + 层缓存加速构建
 # - 移除每次部署都执行的 API 启用（改为一次性初始化）
 # - 支持版本标签管理
 
@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║         YUIChat 后端部署到 GCP Cloud Run (v1.2.40)         ║${NC}"
+echo -e "${BLUE}║         YUIChat 后端部署到 GCP Cloud Run (v1.2.46)         ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

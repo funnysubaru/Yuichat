@@ -66,13 +66,16 @@ export function SharePage() {
   }, [searchParams.get('project')]); // 1.1.14: 监听项目ID参数变化
 
   // 1.2.24: 使用前端 URL 替代 Chainlit URL，支持流式输出
-  // 1.2.49: 添加语言参数，让社交媒体预览显示对应语言
+  // 1.2.52: 区分两种 URL：
+  // - shareUrl: 给真实用户的链接，不含语言参数，用户会根据浏览器语言自动选择
+  // - testUrl: 管理员测试用的链接，携带当前语言参数
   const frontendBaseUrl = window.location.origin; // 自动获取当前域名
   const currentLang = i18n.language.split('-')[0]; // 获取当前语言（去除地区代码）
-  const shareUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}?lang=${currentLang}` : '';
+  const shareUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}` : ''; // 给真实用户，不含 lang
+  const testUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}?lang=${currentLang}` : ''; // 管理员测试用
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(shareUrl);
+    navigator.clipboard.writeText(shareUrl); // 复制不含语言参数的链接
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     toast.success(t('linkCopied'));
@@ -150,6 +153,7 @@ export function SharePage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {t('publicAccessLink')}
             </label>
+            {/* 1.2.52: shareUrl 用于显示和复制（不含语言参数），testUrl 用于访问测试（含语言参数） */}
             <div className="flex gap-2">
               <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-gray-600 font-mono text-sm truncate">
                 {shareUrl}
@@ -162,7 +166,7 @@ export function SharePage() {
                 {copied ? t('copied') : t('copy')}
               </button>
               <a
-                href={shareUrl}
+                href={testUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors flex items-center gap-2 text-sm font-medium"

@@ -1,9 +1,17 @@
 import os
 import asyncio
 import re  # 1.1.13: 导入 re 用于 collection_name 验证
+import tempfile  # 1.2.43: 临时文件处理
+import urllib.parse  # 1.2.43: URL 解析
+import requests  # 1.2.43: HTTP 请求下载文件
 from typing import List, Dict, Any, TypedDict
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+# 1.2.42: 旧版导入（注释保留）
+# from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredExcelLoader
+# 1.2.42: 新版导入 - 支持更多文件格式
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredExcelLoader
+from pptx_loader import GeneralPPTXLoader  # 1.2.42: PPT/PPTX 加载器
+from txt_loader import TxtLoader  # 1.2.42: TXT 文本加载器
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
@@ -43,6 +51,7 @@ else:
 
 # 定义状态
 # 1.1.11: 添加URL爬虫相关字段
+# 1.2.52: 添加 language 字段，支持多语言回复
 class GraphState(TypedDict):
     file_path: str
     urls: List[str]  # 1.1.11: URL列表（可选）
@@ -52,29 +61,132 @@ class GraphState(TypedDict):
     messages: List[BaseMessage]
     context: str
     answer: str
+    language: str  # 1.2.52: 语言设置（zh/en/ja）
+
+# 1.2.43: 从 URL 下载文件到临时目录
+def download_file_from_url(url: str) -> str:
+    """
+    1.2.43: 从 URL 下载文件到临时目录
+
+    Args:
+        url: 文件的 URL 地址
+
+    Returns:
+        str: 下载后的本地文件路径
+    """
+    if os.getenv("ENV") == "development":
+        print(f"📥 开始下载文件: {url}")
+
+    # 解析 URL 获取文件名
+    parsed_url = urllib.parse.urlparse(url)
+    path_parts = parsed_url.path.split('/')
+    # 获取原始文件名（最后一部分）
+    original_filename = path_parts[-1] if path_parts[-1] else 'downloaded_file'
+    # URL 解码文件名
+    original_filename = urllib.parse.unquote(original_filename)
+
+    # 获取文件扩展名
+    file_ext = original_filename.split('.')[-1].lower() if '.' in original_filename else ''
+
+    # 创建临时文件
+    temp_dir = tempfile.mkdtemp(prefix='yuichat_')
+    local_path = os.path.join(temp_dir, original_filename)
+
+    try:
+        # 下载文件
+        response = requests.get(url, timeout=60, stream=True)
+        response.raise_for_status()
+
+        # 写入本地文件
+        with open(local_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        if os.getenv("ENV") == "development":
+            file_size = os.path.getsize(local_path)
+            print(f"✅ 文件下载完成: {local_path} ({file_size} 字节)")
+
+        return local_path
+
+    except Exception as e:
+        # 清理临时目录
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise ValueError(f"文件下载失败: {str(e)}")
+
 
 # 1.1.0: 文件处理节点
+# 1.2.42: 扩展支持 PPTX 和 TXT 文件格式
+# 1.2.43: 支持从 URL 下载文件
 def process_file_node(state: GraphState):
     file_path = state.get('file_path')
     if not file_path:
         print("No file path provided, skipping file processing.")
         return {"docs": state.get('docs', [])}
-        
+
     print(f"Processing file: {file_path}")
-    
-    docs = []
-    if file_path.endswith('.pdf'):
-        loader = PyPDFLoader(file_path)
-    elif file_path.endswith('.docx') or file_path.endswith('.doc'):
-        loader = Docx2txtLoader(file_path)
-    elif file_path.endswith('.xlsx') or file_path.endswith('.xls'):
-        # 1.1.0: Excel 建议转换为 CSV 或使用专门处理，这里暂时使用通用加载器
-        loader = UnstructuredExcelLoader(file_path)
-    else:
-        raise ValueError(f"Unsupported file type: {file_path}")
-        
-    docs = loader.load()
-    return {"docs": docs}
+
+    # 1.2.43: 检查是否是 URL，如果是则先下载到本地
+    local_file_path = file_path
+    temp_dir_to_cleanup = None
+
+    if file_path.startswith(('http://', 'https://')):
+        if os.getenv("ENV") == "development":
+            print(f"🌐 检测到 URL，开始下载文件...")
+        local_file_path = download_file_from_url(file_path)
+        # 记录临时目录以便后续清理
+        temp_dir_to_cleanup = os.path.dirname(local_file_path)
+
+    try:
+        docs = []
+        # 1.2.42: 获取文件扩展名（小写）
+        file_ext = local_file_path.lower().split('.')[-1] if '.' in local_file_path else ''
+
+        # 1.2.42: 根据文件类型选择加载器
+        if file_ext == 'pdf':
+            loader = PyPDFLoader(local_file_path)
+        elif file_ext in ['docx', 'doc']:
+            loader = Docx2txtLoader(local_file_path)
+        elif file_ext in ['xlsx', 'xls']:
+            # 1.1.0: Excel 建议转换为 CSV 或使用专门处理，这里暂时使用通用加载器
+            loader = UnstructuredExcelLoader(local_file_path)
+        elif file_ext in ['pptx', 'ppt']:
+            # 1.2.42: PPT/PPTX 文件 - 使用自定义加载器
+            # 注意：.ppt 格式需要先转换为 .pptx（python-pptx 只支持 .pptx）
+            if file_ext == 'ppt':
+                if os.getenv("ENV") == "development":
+                    print("⚠️ .ppt 格式不受支持，请转换为 .pptx 格式")
+                raise ValueError(f"不支持的文件格式: .ppt，请转换为 .pptx 格式后重新上传")
+            loader = GeneralPPTXLoader(local_file_path, enable_ocr=False)
+            if os.getenv("ENV") == "development":
+                print(f"📊 使用 GeneralPPTXLoader 处理 PPTX 文件")
+        elif file_ext == 'txt':
+            # 1.2.42: TXT 文本文件 - 使用自定义加载器（支持编码检测）
+            loader = TxtLoader(local_file_path)
+            if os.getenv("ENV") == "development":
+                print(f"📄 使用 TxtLoader 处理 TXT 文件")
+        else:
+            # 1.2.42: 不支持的文件类型
+            raise ValueError(f"不支持的文件类型: {local_file_path}。支持的格式: pdf, docx, xlsx, pptx, txt")
+
+        docs = loader.load()
+
+        # 1.2.42: 打印加载结果
+        if os.getenv("ENV") == "development":
+            print(f"✅ 文件加载完成，生成 {len(docs)} 个文档")
+            for i, doc in enumerate(docs):
+                content_preview = doc.page_content[:100].replace('\n', ' ') if doc.page_content else ''
+                print(f"  文档 {i+1}: {len(doc.page_content)} 字符, 预览: {content_preview}...")
+
+        return {"docs": docs}
+
+    finally:
+        # 1.2.43: 清理临时文件
+        if temp_dir_to_cleanup and os.path.exists(temp_dir_to_cleanup):
+            import shutil
+            shutil.rmtree(temp_dir_to_cleanup, ignore_errors=True)
+            if os.getenv("ENV") == "development":
+                print(f"🗑️ 已清理临时目录: {temp_dir_to_cleanup}")
 
 # 1.1.11: URL爬虫节点
 def crawl_url_node(state: GraphState):
@@ -458,20 +570,40 @@ def chat_node(state: GraphState):
         
         context = "\n\n".join([doc.page_content for doc in relevant_docs])
     
+    # 1.2.52: 获取语言设置，默认为中文
+    language = state.get('language', 'zh')
+    if language not in ['zh', 'en', 'ja']:
+        language = 'zh'
+    
+    # 1.2.52: 多语言空上下文提示
+    empty_context_messages = {
+        'zh': "抱歉，我在知识库中没有找到与您的问题相关的信息。请尝试：\n1. 使用不同的关键词提问\n2. 确认相关知识库文档已正确上传和索引\n3. 检查查询是否正确",
+        'en': "Sorry, I couldn't find any relevant information in the knowledge base related to your question. Please try:\n1. Using different keywords\n2. Confirming the relevant documents have been uploaded and indexed\n3. Checking if your query is correct",
+        'ja': "申し訳ありませんが、ナレッジベースにご質問に関連する情報が見つかりませんでした。以下をお試しください：\n1. 異なるキーワードで質問する\n2. 関連ドキュメントがアップロードされ、インデックスされていることを確認する\n3. クエリが正しいか確認する"
+    }
+    
     # 1.1.11: 如果上下文为空或只有错误信息，给出提示
     if not context or not context.strip() or len(context.strip()) < 50:
         if os.getenv("ENV") == "development":
             print("⚠️ 警告: 上下文为空或过短，可能没有找到相关文档")
-        # 返回一个友好的提示
+        # 返回一个友好的提示（1.2.52: 根据语言返回）
         return {
-            "answer": "抱歉，我在知识库中没有找到与您的问题相关的信息。请尝试：\n1. 使用不同的关键词提问\n2. 确认相关知识库文档已正确上传和索引\n3. 检查查询是否正确",
+            "answer": empty_context_messages.get(language, empty_context_messages['zh']),
             "messages": messages,
             "context": ""
         }
     
+    # 1.2.52: 多语言系统提示词
+    system_prompts = {
+        'zh': "你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。如果上下文中没有相关信息，请诚实地说你不知道。请使用中文回复。\n\n上下文:\n{context}",
+        'en': "You are a professional knowledge base assistant. Please answer the user's question based on the context provided below. If there is no relevant information in the context, please honestly say you don't know. Please respond in English.\n\nContext:\n{context}",
+        'ja': "あなたはプロフェッショナルなナレッジベースアシスタントです。以下に提供されたコンテキストに基づいてユーザーの質問に答えてください。コンテキストに関連情報がない場合は、正直にわからないと言ってください。日本語で回答してください。\n\nコンテキスト:\n{context}"
+    }
+    
     # 生成回答
+    # 1.2.52: 使用多语言系统提示词
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。如果上下文中没有相关信息，请诚实地说你不知道。 \n\n上下文:\n{context}"),
+        ("system", system_prompts.get(language, system_prompts['zh'])),
         MessagesPlaceholder(variable_name="messages"),
     ])
     
@@ -618,20 +750,40 @@ async def chat_node_stream(state: GraphState):
         
         context = "\n\n".join([doc.page_content for doc in relevant_docs])
     
+    # 1.2.52: 获取语言设置，默认为中文
+    language = state.get('language', 'zh')
+    if language not in ['zh', 'en', 'ja']:
+        language = 'zh'
+    
+    # 1.2.52: 多语言空上下文提示
+    empty_context_messages = {
+        'zh': "抱歉，我在知识库中没有找到与您的问题相关的信息。",
+        'en': "Sorry, I couldn't find any relevant information in the knowledge base related to your question.",
+        'ja': "申し訳ありませんが、ナレッジベースにご質問に関連する情報が見つかりませんでした。"
+    }
+    
     # 1.2.24: 如果上下文为空，返回友好提示
     if not context or not context.strip() or len(context.strip()) < 50:
         if os.getenv("ENV") == "development":
             print("⚠️ 警告: 上下文为空或过短，可能没有找到相关文档")
         yield {
-            "answer": "抱歉，我在知识库中没有找到与您的问题相关的信息。",
+            "answer": empty_context_messages.get(language, empty_context_messages['zh']),
             "done": True,
             "context": ""
         }
         return
     
+    # 1.2.52: 多语言系统提示词
+    system_prompts = {
+        'zh': "你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。如果上下文中没有相关信息，请诚实地说你不知道。请使用中文回复。\n\n上下文:\n{context}",
+        'en': "You are a professional knowledge base assistant. Please answer the user's question based on the context provided below. If there is no relevant information in the context, please honestly say you don't know. Please respond in English.\n\nContext:\n{context}",
+        'ja': "あなたはプロフェッショナルなナレッジベースアシスタントです。以下に提供されたコンテキストに基づいてユーザーの質問に答えてください。コンテキストに関連情報がない場合は、正直にわからないと言ってください。日本語で回答してください。\n\nコンテキスト:\n{context}"
+    }
+    
     # 1.2.24: 生成流式回答
+    # 1.2.52: 使用多语言系统提示词
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。如果上下文中没有相关信息，请诚实地说你不知道。 \n\n上下文:\n{context}"),
+        ("system", system_prompts.get(language, system_prompts['zh'])),
         MessagesPlaceholder(variable_name="messages"),
     ])
     
