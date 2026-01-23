@@ -13,6 +13,7 @@
  * 1.2.56: 修复公开聊天页面继承测试对话历史的问题，公开模式初始化时清空消息
  * 1.2.57: 修复公开模式加载卡住的问题，正确设置loadingDocuments状态，优化异步加载高频问题
  * 1.2.58: 修复生产环境每次点击测试对话不刷新聊天的问题，首次进入/chat时也需要清空消息
+ * 1.3.0: 新增 follow_up 推荐问题显示功能，支持后续问题推荐
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -94,6 +95,8 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
   // 1.2.55: 跟踪知识库是否有文档
   const [hasDocuments, setHasDocuments] = useState<boolean | null>(null);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
+  // 1.3.0: follow_up 推荐问题状态
+  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const previousPathRef = useRef<string>(''); // 1.2.2: 记录上一个路由路径
@@ -117,6 +120,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     currentConversationId, // 1.2.13: 当前对话ID
     setCurrentConversationId, // 1.2.13: 设置当前对话ID
     addConversation, // 1.2.13: 添加对话到列表
+    updateConversation, // 1.3.4: 更新对话信息（用于实时更新标题）
   } = useChatStore();
 
   // 1.1.15: 从URL参数加载当前知识库，确保知识库隔离
@@ -316,8 +320,10 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     const refreshParam = searchParams.get('_refresh'); // 1.2.3: 检测刷新参数
     
     // 1.2.4: 如果检测到 _refresh 参数，清空消息并移除该参数，然后触发配置重新加载
+    // 1.3.3: 同时清空 currentConversationId，确保下次提问时创建新对话
     if (refreshParam && currentPath === '/chat') {
       clearMessages();
+      setCurrentConversationId(null); // 1.3.3: 清空当前对话ID，开始新对话
       // 移除 _refresh 参数，避免 URL 中保留
       const newSearchParams = new URLSearchParams(searchParams);
       newSearchParams.delete('_refresh');
@@ -330,7 +336,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         loadChatConfig(currentKb);
       }
       if (import.meta.env.DEV) {
-        logger.log(`Refresh parameter detected, clearing messages and showing welcome`);
+        logger.log(`Refresh parameter detected, clearing messages and starting new conversation`);
       }
       return;
     }
@@ -347,25 +353,29 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       
       if (previousPathOnly !== '/chat') {
         // 1.2.58: 从其他页面导航到 /chat（包括首次进入时 previousPath 为空的情况）
+        // 1.3.3: 同时清空 currentConversationId，确保开始新对话
         clearMessages();
+        setCurrentConversationId(null); // 1.3.3: 清空当前对话ID
         // 1.2.11: 重置配置加载标记，使用loadChatConfig统一处理
         if (currentKb) {
           configLoadedRef.current = null;
           loadChatConfig(currentKb);
         }
         if (import.meta.env.DEV) {
-          logger.log(`Navigated to /chat from ${previousPath || '(initial)'}, clearing messages and showing welcome`);
+          logger.log(`Navigated to /chat from ${previousPath || '(initial)'}, starting new conversation`);
         }
       } else if (previousPathOnly === '/chat' && currentFullPath !== previousPath) {
         // 在 /chat 页面内，但 URL 发生了变化（比如点击侧边栏的测试对话）
+        // 1.3.3: 同时清空 currentConversationId，确保开始新对话
         clearMessages();
+        setCurrentConversationId(null); // 1.3.3: 清空当前对话ID
         // 1.2.11: 重置配置加载标记，使用loadChatConfig统一处理
         if (currentKb) {
           configLoadedRef.current = null;
           loadChatConfig(currentKb);
         }
         if (import.meta.env.DEV) {
-          logger.log(`URL changed within /chat, clearing messages and showing welcome`);
+          logger.log(`URL changed within /chat, starting new conversation`);
         }
       }
     }
@@ -412,16 +422,12 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     }
     
     // 1.2.11: 如果正在请求，取消之前的请求
+    // 1.3.5: 取消请求后重置状态，允许新请求继续
     if (fetchingQuestionsRef.current && abortControllerRef.current) {
       abortControllerRef.current.abort();
-    }
-    
-    // 1.2.11: 防止重复请求
-    if (fetchingQuestionsRef.current) {
-      if (import.meta.env.DEV) {
-        logger.warn('Frequent questions request already in progress, skipping');
-      }
-      return [];
+      // 1.3.5: 重置状态，让新请求可以正常进行
+      fetchingQuestionsRef.current = false;
+      abortControllerRef.current = null;
     }
     
     fetchingQuestionsRef.current = true;
@@ -747,6 +753,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     const query = question.trim();
     setInput('');
     setIsTyping(true);
+    setFollowUpQuestions([]); // 1.3.0: 清空之前的 follow_up 问题
 
     const userMessageId = addMessage({
       role: 'user',
@@ -823,11 +830,26 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         citations: data.citations || [],
       });
 
+      // 1.3.0: 处理 follow_up 推荐问题（非流式响应）
+      if (data.follow_up && Array.isArray(data.follow_up)) {
+        const questions = data.follow_up
+          .map((q: any) => q.content || q)
+          .filter((q: string) => q && q.trim());
+        setFollowUpQuestions(questions);
+        if (import.meta.env.DEV) {
+          logger.log('Received follow_up questions (non-stream):', questions);
+        }
+      } else {
+        setFollowUpQuestions([]);
+      }
+
       // 1.2.14: 如果是第一条AI回复，更新对话标题
+      // 1.3.4: 同时更新 store，实现侧边栏实时刷新
       if (currentConversationId && messages.length === 0) {
         const title = (data.answer || '新对话').substring(0, 50);
         try {
           await updateConversationTitle(currentConversationId, title);
+          updateConversation(currentConversationId, { title }); // 1.3.4: 实时更新 UI
         } catch (error) {
           logger.error('Error updating conversation title:', error);
         }
@@ -863,6 +885,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     const query = input.trim();
     setInput('');
     setIsTyping(true);
+    setFollowUpQuestions([]); // 1.3.0: 清空之前的 follow_up 问题
 
     // 1.2.13: 如果没有对话，创建新对话
     // 1.2.25: 公开模式下不需要创建对话记录
@@ -1005,6 +1028,20 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
               if (parsed.done && parsed.answer) {
                 // 收到完整答案，保存上下文
                 fullContext = parsed.context || '';
+                
+                // 1.3.0: 处理 follow_up 推荐问题
+                if (parsed.follow_up && Array.isArray(parsed.follow_up)) {
+                  const questions = parsed.follow_up
+                    .map((q: any) => q.content || q)
+                    .filter((q: string) => q && q.trim());
+                  setFollowUpQuestions(questions);
+                  if (import.meta.env.DEV) {
+                    logger.log('Received follow_up questions:', questions);
+                  }
+                } else {
+                  setFollowUpQuestions([]);
+                }
+                
                 if (import.meta.env.DEV) {
                   logger.log('Received full answer with context');
                 }
@@ -1085,14 +1122,27 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     }
   };
 
+  // 1.3.1: 使用 ref 跟踪正在保存的消息ID，防止并发保存
+  const savingMessageIdRef = useRef<string | null>(null);
+
   // 1.2.13: 自动保存消息到数据库
   // 1.2.14: 修复标题更新逻辑，防止重复保存
   // 1.2.25: 公开模式下不保存消息
-  const autoSaveMessage = useCallback(
-    async (message: ChatMessage) => {
+  // 1.3.1: 彻底修复消息重复保存问题
+  const saveMessageToDb = useCallback(
+    async (message: ChatMessage, allMessages: ChatMessage[]) => {
       if (isPublicMode || !currentConversationId || !currentKb) return;
 
-      // 1.2.14: 防止重复保存
+      // 1.3.1: 检查消息是否来自数据库（UUID格式）
+      // 从数据库加载的消息ID是UUID格式，新创建的消息ID以 'msg-' 开头
+      if (!message.id.startsWith('msg-')) {
+        if (import.meta.env.DEV) {
+          logger.log('Message from database, skipping save:', message.id);
+        }
+        return;
+      }
+
+      // 1.3.1: 检查是否已保存或正在保存
       if (savedMessageIdsRef.current.has(message.id)) {
         if (import.meta.env.DEV) {
           logger.log('Message already saved, skipping:', message.id);
@@ -1100,9 +1150,23 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         return;
       }
 
+      // 1.3.1: 检查是否正在保存同一条消息
+      if (savingMessageIdRef.current === message.id) {
+        if (import.meta.env.DEV) {
+          logger.log('Message is being saved, skipping:', message.id);
+        }
+        return;
+      }
+
+      // 1.3.1: 标记正在保存
+      savingMessageIdRef.current = message.id;
+
       try {
         const user = await getCurrentUser();
-        if (!user) return;
+        if (!user) {
+          savingMessageIdRef.current = null;
+          return;
+        }
 
         // 1.2.13: 保存消息到数据库
         await saveMessage(
@@ -1117,46 +1181,70 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         // 1.2.14: 标记消息已保存
         savedMessageIdsRef.current.add(message.id);
 
-        // 1.2.15: 修复标题更新逻辑：优先使用用户的第一条问题，只有当没有用户提问时才使用AI回复
-        const completedMessages = messages.filter(msg => msg.status === 'completed');
+        if (import.meta.env.DEV) {
+          logger.log('Message saved successfully:', message.id);
+        }
+
+        // 1.2.15: 修复标题更新逻辑
+        // 1.3.4: 更新标题后同时更新 store，实现 UI 实时刷新
+        const completedMessages = allMessages.filter(msg => msg.status === 'completed');
         const userMessages = completedMessages.filter(msg => msg.role === 'user');
         const assistantMessages = completedMessages.filter(msg => msg.role === 'assistant');
         
-        // 1.2.15: 如果保存的是用户的第一条消息，使用用户消息作为标题
         if (message.role === 'user' && userMessages.length === 1) {
           const title = message.content.substring(0, 50);
           await updateConversationTitle(currentConversationId, title);
+          // 1.3.4: 同时更新 store 中的对话标题，实现侧边栏实时刷新
+          updateConversation(currentConversationId, { title });
         }
-        // 1.2.15: 如果保存的是AI回复，且没有用户消息（只有AI欢迎语），才使用AI回复作为标题
         else if (message.role === 'assistant' && assistantMessages.length === 1 && userMessages.length === 0) {
           const title = message.content.substring(0, 50);
           await updateConversationTitle(currentConversationId, title);
+          // 1.3.4: 同时更新 store 中的对话标题，实现侧边栏实时刷新
+          updateConversation(currentConversationId, { title });
         }
       } catch (error) {
         logger.error('Error auto-saving message:', error);
-        // 1.2.13: 静默失败，不影响用户体验
+      } finally {
+        savingMessageIdRef.current = null;
       }
     },
-    [isPublicMode, currentConversationId, currentKb, messages]
+    [isPublicMode, currentConversationId, currentKb, updateConversation]
   );
 
   // 1.2.13: 监听消息变化，自动保存
   // 1.2.14: 当对话ID变化时，重置已保存消息ID集合
+  // 1.3.1: 同时将当前加载的消息ID添加到已保存集合中（它们本来就是从数据库加载的）
   useEffect(() => {
     if (currentConversationId) {
-      savedMessageIdsRef.current.clear(); // 1.2.14: 切换对话时清空已保存消息ID集合
+      savedMessageIdsRef.current.clear();
+      // 1.3.1: 将所有非 msg- 开头的消息ID添加到已保存集合（它们是从数据库加载的）
+      messages.forEach(msg => {
+        if (!msg.id.startsWith('msg-')) {
+          savedMessageIdsRef.current.add(msg.id);
+        }
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentConversationId]);
 
+  // 1.3.1: 保存所有未保存的已完成消息（不只是最后一条）
   useEffect(() => {
     if (messages.length === 0 || !currentConversationId) return;
 
-    const lastMessage = messages[messages.length - 1];
-    // 1.2.13: 只保存已完成的消息
-    if (lastMessage.status === 'completed') {
-      autoSaveMessage(lastMessage);
-    }
-  }, [messages, currentConversationId, autoSaveMessage]);
+    // 1.3.1: 遍历所有消息，保存未保存的已完成消息
+    messages.forEach(message => {
+      if (
+        message.status === 'completed' &&
+        message.id.startsWith('msg-') &&
+        !savedMessageIdsRef.current.has(message.id) &&
+        savingMessageIdRef.current !== message.id
+      ) {
+        saveMessageToDb(message, messages);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, currentConversationId]);
 
   return (
     <div className="flex-1 flex flex-row min-h-0 bg-white relative">
@@ -1366,6 +1454,33 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
               </motion.div>
             );
           })
+        )}
+        {/* 1.3.0: 显示 follow_up 推荐问题 */}
+        {!isTyping && followUpQuestions.length > 0 && messages.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="ml-11 space-y-2 mt-4"
+          >
+            <p className="text-xs text-gray-500 mb-2">{t('followUpQuestions') || '您可能还想问：'}</p>
+            <div className="flex flex-wrap gap-2">
+              {followUpQuestions.slice(0, 3).map((question, index) => (
+                <motion.button
+                  key={`followup-${index}`}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.1 }}
+                  onClick={() => {
+                    setFollowUpQuestions([]); // 清空当前 follow_up
+                    handleRecommendedQuestionClick(question);
+                  }}
+                  className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700 text-left"
+                >
+                  {question}
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
         )}
         {isTyping && (
           <div className="flex gap-3 justify-start">

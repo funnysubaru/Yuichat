@@ -1,6 +1,7 @@
 /**
  * 1.0.0: YUIChat 项目 - 知识库管理页面
  * ChatMax 风格的 UI 设计
+ * 1.2.59: 修复文档列表最后一行删除按钮被遮挡的问题
  */
 
 import { useState, useEffect } from 'react';
@@ -787,8 +788,9 @@ export function KnowledgeBasePage() {
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>
+                          {/* 1.2.59: 下拉菜单向上弹出，避免被表格容器裁剪 */}
                           {openMenuId === doc.id && (
-                            <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-50">
+                            <div className="absolute right-0 bottom-full mb-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-[9999]">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();

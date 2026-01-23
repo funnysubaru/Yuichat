@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║         YUIChat 后端部署到 GCP Cloud Run (v1.2.46)         ║${NC}"
+echo -e "${BLUE}║         YUIChat 后端部署到 GCP Cloud Run (v1.3.5)          ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

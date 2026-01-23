@@ -3,6 +3,7 @@
  * 1.2.25: 修复高频问题和欢迎语无法显示的问题，传递知识库对象给 ChatInterface
  * 1.2.28: 添加多语言支持，集成 i18n 和语言切换器
  * 1.2.49: 支持通过 URL 参数设置语言，让分享链接的语言与分享者一致
+ * 1.2.59: 统一 loading 动画为 YUI 文字动画
  * 无需登录即可访问，通过 share_token 识别知识库
  */
 
@@ -68,11 +69,12 @@ export function PublicChatPage() {
     loadKnowledgeBase();
   }, [shareToken, t]); // 1.2.28: 添加 t 依赖
 
+  // 1.2.59: 统一 loading 动画为 YUI 文字动画（与其他页面一致）
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+          <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl mb-4">YUI</span>
           <p className="text-gray-600">{t('publicChatLoading')}</p>
         </div>
       </div>

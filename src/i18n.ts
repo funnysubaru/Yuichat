@@ -1,4 +1,4 @@
-// 1.2.55: YUIChat 项目 - 国际化配置 (添加空知识库提示多语言)
+// 1.3.0: YUIChat 项目 - 国际化配置 (添加 follow_up 推荐问题多语言)
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
@@ -303,6 +303,9 @@ const resources = {
       emptyKnowledgeBaseMessage: '还没有上传任何知识～请立即前往知识库上传吧',
       goToKnowledgeBase: '立即前往',
       emptyKnowledgeBasePlaceholder: '请先上传知识库文档',
+      
+      // 1.3.0: follow_up 推荐问题
+      followUpQuestions: '您可能还想问：',
     }
   },
   ja: {
@@ -595,6 +598,9 @@ const resources = {
       emptyKnowledgeBaseMessage: 'まだ知識がアップロードされていません。今すぐナレッジベースにアップロードしてください',
       goToKnowledgeBase: '今すぐ移動',
       emptyKnowledgeBasePlaceholder: '先にナレッジベースにドキュメントをアップロードしてください',
+      
+      // 1.3.0: follow_up 推奨質問
+      followUpQuestions: '他にもこんな質問ができます：',
     }
   },
   en: {
@@ -887,6 +893,9 @@ const resources = {
       emptyKnowledgeBaseMessage: 'No knowledge uploaded yet. Please go to the knowledge base to upload now',
       goToKnowledgeBase: 'Go Now',
       emptyKnowledgeBasePlaceholder: 'Please upload documents to the knowledge base first',
+      
+      // 1.3.0: follow_up recommended questions
+      followUpQuestions: 'You might also want to ask:',
     }
   }
 };

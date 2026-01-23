@@ -2,6 +2,7 @@
  * 1.1.2: 外部分享页面
  * 1.2.24: 更新为生成前端公开聊天链接（替代 Chainlit）
  * 1.2.49: 分享链接附带当前语言参数，支持社交媒体多语言预览
+ * 1.2.59: 统一 loading 动画为 YUI 文字动画
  * 用于生成和管理直接面向用户的聊天链接，支持流式输出
  */
 
@@ -105,8 +106,13 @@ export function SharePage() {
     }
   };
 
+  // 1.2.59: 统一 loading 动画为 YUI 文字动画（与其他页面一致）
   if (loading) {
-    return <div className="p-8 flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+      </div>
+    );
   }
 
   if (!kb) {

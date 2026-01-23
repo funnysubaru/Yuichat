@@ -19,6 +19,12 @@ import asyncio  # 1.2.39: 并行处理
 load_dotenv('.env.local')  # 本地开发配置优先
 load_dotenv()  # 回退到 .env
 
+# 1.3.0: 导入问题生成模块（用于异步预生成推荐问题）
+from question_generator import async_generate_questions
+
+# 1.3.0: 导入问题检索模块（用于获取 follow-up 推荐问题）
+from question_retriever import get_recommended_questions, get_initial_questions
+
 # 1.2.36: 配置日志记录器，确保生产环境也能记录错误
 logging.basicConfig(
     level=logging.INFO,
@@ -39,11 +45,11 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # 1.2.24: 创建独立的 FastAPI 应用，替代 Chainlit
-# 1.2.43: 更新版本号 - 支持从 URL 下载文件后处理
+# 1.3.0: 新增推荐问题离线预计算功能
 fastapi_app = FastAPI(
     title="YUIChat API",
     description="YUIChat 后端 API，提供知识库管理和聊天功能",
-    version="1.2.52"  # 1.2.52: 修复语言切换后AI回复语言不正确的问题
+    version="1.3.0"  # 1.3.0: 推荐问题离线预计算功能
 )
 
 # 1.2.24: 添加 CORS 中间件，允许前端访问
@@ -56,14 +62,14 @@ fastapi_app.add_middleware(
 )
 
 # 1.2.35: 健康检查端点（用于 Cloud Run）
-# 1.2.43: 更新版本号 - 支持从 URL 下载文件后处理
+# 1.3.0: 推荐问题离线预计算功能
 @fastapi_app.get("/health")
 async def health_check():
     """健康检查端点，用于 Cloud Run 健康检查"""
     return {
         "status": "healthy",
         "service": "YUIChat API",
-        "version": "1.2.51"  # 1.2.51: 修复多语言文档高频问题检索
+        "version": "1.3.0"  # 1.3.0: 推荐问题离线预计算功能
     }
 
 @fastapi_app.post("/api/process-file")
@@ -229,6 +235,32 @@ async def process_file(request: Request):
                     print(f"⚠️ process_file: docs is empty")
                 if not supabase:
                     print(f"⚠️ process_file: supabase client not available")
+        
+        # 1.3.0: 异步触发推荐问题生成（不阻塞上传响应）
+        if supabase:
+            try:
+                # 获取知识库 ID
+                kb_result = supabase.table("knowledge_bases")\
+                    .select("id")\
+                    .eq("vector_collection", collection_name)\
+                    .single()\
+                    .execute()
+                
+                if kb_result.data:
+                    kb_id = kb_result.data.get("id")
+                    # 异步触发问题生成
+                    asyncio.create_task(
+                        async_generate_questions(
+                            kb_id=kb_id,
+                            collection_name=collection_name,
+                            doc_id=None  # 文件上传时可能没有具体的 doc_id
+                        )
+                    )
+                    if os.getenv("ENV") == "development":
+                        print(f"🚀 Triggered async question generation for kb_id={kb_id}")
+            except Exception as qg_error:
+                # 问题生成失败不影响主流程
+                logger.warning(f"Failed to trigger question generation: {qg_error}")
         
         return JSONResponse(content={
             "status": "success",
@@ -449,10 +481,36 @@ async def process_url(request: Request):
                     print(f"⚠️ Failed to update word_count for URLs: {e}")
                     print(f"   Traceback: {traceback.format_exc()}")
         
+        # 1.3.0: 异步触发推荐问题生成（只有成功或部分成功时触发）
+        async def trigger_question_generation():
+            """异步触发问题生成的辅助函数"""
+            if supabase:
+                try:
+                    kb_result = supabase.table("knowledge_bases")\
+                        .select("id")\
+                        .eq("vector_collection", collection_name)\
+                        .single()\
+                        .execute()
+                    
+                    if kb_result.data:
+                        kb_id = kb_result.data.get("id")
+                        asyncio.create_task(
+                            async_generate_questions(
+                                kb_id=kb_id,
+                                collection_name=collection_name,
+                                doc_id=None
+                            )
+                        )
+                        if os.getenv("ENV") == "development":
+                            print(f"🚀 Triggered async question generation for kb_id={kb_id}")
+                except Exception as qg_error:
+                    logger.warning(f"Failed to trigger question generation: {qg_error}")
+        
         # 1.1.12: 如果有错误文档，返回部分成功或失败状态
         if error_docs:
             if valid_docs:
-                # 部分成功
+                # 部分成功 - 仍然触发问题生成
+                await trigger_question_generation()
                 return JSONResponse(content={
                     "status": "partial_success",
                     "collection_name": collection_name,
@@ -462,7 +520,7 @@ async def process_url(request: Request):
                     "errors": [doc.metadata.get('error', '解析失败') for doc in error_docs]
                 })
             else:
-                # 全部失败
+                # 全部失败 - 不触发问题生成
                 return JSONResponse(
                     status_code=400,
                     content={
@@ -475,7 +533,8 @@ async def process_url(request: Request):
                     }
                 )
         
-        # 全部成功
+        # 全部成功 - 触发问题生成
+        await trigger_question_generation()
         return JSONResponse(content={
             "status": "success",
             "collection_name": collection_name,
@@ -615,11 +674,27 @@ async def chat(request: Request):
         answer = result.get("answer", "抱歉，我无法回答这个问题。")
         context = result.get("context", "")
         
+        # 1.3.0: 获取 follow-up 推荐问题
+        follow_up_questions = []
+        try:
+            follow_up_questions = await get_recommended_questions(
+                query=query,
+                collection_name=collection_name,
+                language=language,
+                limit=3
+            )
+            if os.getenv("ENV") == "development":
+                print(f"🎯 Retrieved {len(follow_up_questions)} follow-up questions")
+        except Exception as fq_error:
+            # 获取推荐问题失败不影响主响应
+            logger.warning(f"Failed to get follow-up questions: {fq_error}")
+        
         return JSONResponse(content={
             "status": "success",
             "answer": answer,
             "context": context,
-            "collection_name": collection_name
+            "collection_name": collection_name,
+            "follow_up": [{"content": q} for q in follow_up_questions]  # 1.3.0: 新增
         })
     except Exception as e:
         if os.getenv("ENV") == "development":  # 1.1.10: 仅开发环境输出详细错误
@@ -731,8 +806,28 @@ async def chat_stream(request: Request):
                 # 调用流式聊天函数
                 async for chunk_data in chat_node_stream(state):
                     if chunk_data.get("done"):
-                        # 发送完成消息，包含完整答案和上下文
-                        yield f"data: {json.dumps({'answer': chunk_data.get('answer', ''), 'context': chunk_data.get('context', ''), 'done': True})}\n\n"
+                        # 1.3.0: 在流结束时获取 follow-up 推荐问题
+                        follow_up_questions = []
+                        try:
+                            follow_up_questions = await get_recommended_questions(
+                                query=query,
+                                collection_name=collection_name,
+                                language=language,
+                                limit=3
+                            )
+                            if os.getenv("ENV") == "development":
+                                print(f"🎯 Stream: Retrieved {len(follow_up_questions)} follow-up questions")
+                        except Exception as fq_error:
+                            logger.warning(f"Failed to get follow-up questions in stream: {fq_error}")
+                        
+                        # 发送完成消息，包含完整答案、上下文和 follow-up 问题
+                        done_data = {
+                            'answer': chunk_data.get('answer', ''),
+                            'context': chunk_data.get('context', ''),
+                            'follow_up': [{"content": q} for q in follow_up_questions],  # 1.3.0: 新增
+                            'done': True
+                        }
+                        yield f"data: {json.dumps(done_data)}\n\n"
                     else:
                         # 发送数据块
                         chunk_text = chunk_data.get("chunk", "")
@@ -817,6 +912,32 @@ async def get_chat_config(request: Request):
         if chat_config:
             welcome_message = chat_config.get("welcome_message", {}).get(language, "")
             recommended_questions = chat_config.get("recommended_questions", {}).get(language, [])
+        
+        # 1.3.0: 如果没有手动配置的推荐问题，尝试获取预生成的推荐问题
+        if not recommended_questions and supabase:
+            try:
+                # 先获取 vector_collection
+                kb_result = supabase.table("knowledge_bases")\
+                    .select("vector_collection")\
+                    .eq("share_token", kb_token)\
+                    .single()\
+                    .execute()
+                
+                if kb_result.data:
+                    collection_name = kb_result.data.get("vector_collection")
+                    if collection_name:
+                        # 获取预生成的推荐问题
+                        initial_questions = await get_initial_questions(
+                            collection_name=collection_name,
+                            language=language,
+                            limit=3
+                        )
+                        if initial_questions:
+                            recommended_questions = initial_questions
+                            if os.getenv("ENV") == "development":
+                                print(f"🎯 Using pre-generated questions: {len(recommended_questions)}")
+            except Exception as e:
+                logger.warning(f"Failed to get pre-generated questions: {e}")
         
         return JSONResponse(content={
             "status": "success",

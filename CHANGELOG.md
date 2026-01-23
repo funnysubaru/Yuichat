@@ -1,5 +1,188 @@
 # Changelog
 
+## 1.3.5 (2026-01-24)
+
+### 修复刷新后显示默认高频问题而非知识库相关问题的问题
+
+- 🐛 **问题现象**：对话完成后点击"测试对话"刷新，显示的是默认通用问题（"您能介绍一下这个项目吗?"等），而不是知识库相关的高频问题
+- 🔍 **根因分析**：
+  - 刷新时调用 `fetchFrequentQuestions`，如果之前的请求还在进行中
+  - 代码会取消之前的请求（`abort()`），但紧接着检查 `fetchingQuestionsRef.current`
+  - 由于 abort 是异步的，`finally` 块还没执行，`fetchingQuestionsRef.current` 仍然是 `true`
+  - 新请求直接返回空数组，导致 UI 显示默认问题
+- ✅ **解决方案**：
+  - 在取消请求后，立即重置 `fetchingQuestionsRef.current = false` 和 `abortControllerRef.current = null`
+  - 让新请求可以正常进行
+
+### 更新内容
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 修复 `fetchFrequentQuestions` 中的请求取消逻辑
+  - 取消旧请求后重置状态标记，允许新请求继续
+
+## 1.3.4 (2026-01-24)
+
+### 修复对话记录标题不实时更新的问题
+
+- 🐛 **问题现象**：对话记录列表中的标题没有实时更新为用户的提问，只有刷新页面后才会显示正确的标题
+- 🔍 **根因分析**：
+  - `updateConversationTitle` 只更新了数据库中的标题
+  - 没有同时更新 store 中的 `conversations` 列表
+  - 侧边栏的 UI 依赖 store 中的数据，所以不会实时刷新
+- ✅ **解决方案**：
+  - 在调用 `updateConversationTitle` 更新数据库后
+  - 同时调用 `updateConversation` 更新 store 中的对话标题
+  - 触发 UI 实时刷新
+
+### 更新内容
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 从 store 导入 `updateConversation` 方法
+  - 在 3 处标题更新逻辑中添加 `updateConversation` 调用
+  - 实现对话记录列表标题的实时更新
+
+## 1.3.3 (2026-01-24)
+
+### 修复每次点击"测试对话"菜单应创建新对话的问题
+
+- 🐛 **问题现象**：
+  - 点击左侧菜单的"测试对话"后，所有新提问仍保存到旧对话记录中
+  - 对话记录只有一条，而不是每次进入测试对话页面时创建新对话
+- 🔍 **根因分析**：
+  - 点击"测试对话"菜单时，`clearMessages()` 清空了消息
+  - 但 `currentConversationId` 没有被清空
+  - 新消息继续保存到旧的对话中
+- ✅ **解决方案**：
+  - 在检测到 `_refresh` 参数、从其他页面导航到 `/chat`、或 URL 变化时
+  - 除了 `clearMessages()` 外，同时调用 `setCurrentConversationId(null)`
+  - 确保下次用户提问时会创建全新的对话记录
+
+### 更新内容
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 在 3 处路由变化检测逻辑中添加 `setCurrentConversationId(null)`
+  - 确保每次进入测试对话页面都开始新对话
+
+## 1.3.1 (2026-01-24)
+
+### 彻底修复对话消息重复保存问题
+
+- 🐛 **问题现象**：对话历史中的消息显示重复内容，数据库中同一条消息被保存多次
+- 🔍 **根因分析**：
+  - `autoSaveMessage` 函数依赖 `messages`，导致每次 messages 变化时函数都会重新创建
+  - useEffect 依赖 `autoSaveMessage`，因此被频繁触发
+  - 当消息 status 变为 'completed' 时，可能在短时间内触发多次保存
+- ✅ **解决方案**（彻底重构消息保存逻辑）：
+  1. 添加 `savingMessageIdRef` 跟踪正在保存的消息ID，防止并发保存
+  2. 添加 `lastProcessedRef` 跟踪上次处理的消息长度和ID，避免重复处理
+  3. 重构 `saveMessageToDb` 函数，移除对 `messages` 的依赖
+  4. 在 `currentConversationId` 变化时，将数据库加载的消息ID添加到已保存集合
+  5. 使用 eslint-disable 移除不必要的依赖，避免循环触发
+  6. 检查消息ID格式：`msg-` 开头为新消息，UUID格式为数据库消息
+
+### 修复用户消息未保存的问题
+
+- 🐛 **问题现象**：对话记录中只有AI回复，没有用户的提问
+- 🔍 **根因分析**：
+  - useEffect 只保存最后一条消息
+  - 用户消息和助手消息快速连续添加，React 批量处理状态更新
+  - useEffect 触发时最后一条已是助手消息（streaming状态），用户消息被跳过
+- ✅ **解决方案**：
+  - 修改 useEffect 遍历所有消息，保存所有未保存的已完成消息
+  - 不再只保存最后一条消息
+
+### 更新内容
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 添加 `savingMessageIdRef` 引用防止并发保存
+  - 重构 `autoSaveMessage` 为 `saveMessageToDb`
+  - 修改 useEffect 遍历保存所有未保存的已完成消息
+  - 优化 useEffect 依赖，避免不必要的重新执行
+
+### 修复本地 Google OAuth 登录
+
+- 🔧 **修复**：在 `supabase/config.toml` 中添加 `[auth.external.google]` 配置
+- ⚙️ **配置**：启用 `skip_nonce_check = true` 以支持本地开发环境的 Google 登录
+- 📝 **环境变量**：需要在 `.env.local` 中配置 `GOOGLE_CLIENT_ID` 和 `GOOGLE_CLIENT_SECRET`
+
+## 1.3.0 (2026-01-23)
+
+### 推荐问题离线预计算功能
+
+基于 ChatMax 设计思路，实现文档上传时异步预生成推荐问题，提升对话体验。
+
+#### 核心功能
+
+- 🚀 **离线预计算**：文档上传时异步生成推荐问题，不阻塞上传响应
+- 🌐 **多语言支持**：同时生成中文、英文、日文问题，根据用户语言返回
+- 🔍 **向量检索**：使用语义相似度检索 follow-up 问题，提高推荐质量
+- 💾 **双重存储**：问题存储到 Supabase 表 + pgvector 向量库
+
+#### 新增文件
+
+- 📄 **`supabase/migrations/20260123000000_add_recommended_questions.sql`**
+  - 新建 `recommended_questions` 表，存储预生成的推荐问题
+  - 包含 RLS 策略，支持用户隔离和公开分享
+- 📄 **`backend_py/question_generator.py`**
+  - LLM 问题生成模块：基于文档片段生成多语言问题
+  - 支持异步任务入口 `async_generate_questions()`
+- 📄 **`backend_py/question_retriever.py`**
+  - 问题检索模块：从向量库检索相似问题
+  - 支持 follow-up 问题筛选和初始问题获取
+
+#### 修改文件
+
+- 📄 **`backend_py/app.py`**
+  - `/api/process-file` 和 `/api/process-url`：文档处理完成后异步触发问题生成
+  - `/api/chat`：返回 `follow_up` 字段，包含推荐的后续问题
+  - `/api/chat/stream`：流式响应结束时返回 `follow_up` 问题
+  - `/api/chat-config`：如果没有手动配置推荐问题，自动使用预生成的问题
+
+#### API 响应变更
+
+```json
+// /api/chat 响应新增 follow_up 字段
+{
+  "status": "success",
+  "answer": "...",
+  "context": "...",
+  "follow_up": [
+    {"content": "相关问题1？"},
+    {"content": "相关问题2？"},
+    {"content": "相关问题3？"}
+  ]
+}
+```
+
+---
+
+## 1.2.59 (2026-01-23)
+
+### 统一分享相关页面的 loading 动画
+
+- 🎨 **UI 优化**：将分享相关页面的 loading 动画改为 YUI 文字旋转放大缩小动画
+  - 现在与其他页面（如 Dashboard、AllProjects、App 主页）保持一致
+  - 使用 `yui-loading-animation` CSS 动画类
+
+### 修复文档列表删除按钮被遮挡的问题
+
+- 🐛 **问题现象**：当只有一条数据或最后一条数据时，删除按钮的下拉菜单被表格容器遮挡
+- 🔍 **根因分析**：表格容器设置了 `overflow-auto`，导致下拉菜单被裁剪
+- ✅ **解决方案**：
+  - 将下拉菜单改为向上弹出（`bottom-full` 替代 `top-full`）
+  - 提升 z-index 到 `z-[9999]`，确保菜单显示在最顶层
+
+### 更新内容
+
+- 📄 **`src/pages/SharePage.tsx`**：
+  - 将 "Loading..." 文字替换为 YUI 文字动画
+- 📄 **`src/pages/PublicChatPage.tsx`**：
+  - 替换 `animate-spin` spinner 为 YUI 文字动画
+- 📄 **`src/pages/KnowledgeBasePage.tsx`**：
+  - 修复删除按钮下拉菜单被遮挡问题，改为向上弹出
+
+---
+
 ## 1.2.58 (2026-01-23)
 
 ### 修复生产环境测试对话不刷新的问题
