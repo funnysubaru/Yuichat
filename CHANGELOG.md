@@ -1,5 +1,79 @@
 # Changelog
 
+## 1.3.8 (2026-01-24)
+
+### 修复知识库页面"开始对话"按钮跳转后侧边栏缺少项目菜单的问题
+
+- 🐛 **Bug修复**：
+  - 从知识库页面点击"开始对话"按钮后，测试对话页面的侧边栏缺少"当前项目"相关菜单（知识库、项目设置、测试对话、外部分享、数据看板）
+  - 原因：导航时没有保留 `project` URL 参数，导致侧边栏无法识别当前项目
+
+### 更新内容
+
+- 📄 **`src/components/TopNav.tsx`**：
+  - 引入 `useSearchParams` 读取当前 URL 参数
+  - 添加 `getPathWithProject` 函数，在导航时自动携带 `project` 参数
+  - "开始对话"按钮点击时保留项目 ID
+  - 顶部 Tab 切换时保留项目 ID
+
+## 1.3.7 (2026-01-24)
+
+### 根据设计图重新制作知识库页面Banner 4步工作流程展示
+
+- 🎨 **优化内容**：
+  - 严格按照设计图制作Banner区域：
+    - 标题："4步快速创建知识库"
+    - 副标题："上传文件，网站URL"
+    - "立即创建"按钮（白色背景，紫色文字）
+  - 使用自定义SVG图标精确匹配设计图：
+    - 上传文档：带上传箭头的文档图标
+    - 等待学习完成：放射状加载圈图标
+    - 点击测试对话：双气泡对话框图标（带文字线条）
+    - 分享链接：三点连线分享图标
+  - 背景渐变：从左到右 #9B4DCA → #C74BD9
+  - 图标之间使用简洁的箭头连接
+  - 响应式设计：移动端隐藏箭头
+
+### 更新内容
+
+- 📄 **`src/pages/KnowledgeBasePage.tsx`**：
+  - 使用自定义SVG替代lucide图标，精确匹配设计图样式
+  - 完整Banner布局：标题 + 副标题 + 按钮 + 4步图标流程
+- 📄 **`src/i18n.ts`**：
+  - 添加中文翻译：bannerTitle4Steps, bannerSubtitle4Steps, stepUploadDoc, stepWaitLearning, stepTestChat, stepShareLink
+  - 添加日语翻译
+  - 添加英语翻译
+
+## 1.3.6 (2026-01-24)
+
+### 根据设计图更新知识库页面Banner样式
+
+- 🎨 **优化内容**：
+  - 更新Banner背景渐变色，从粉紫色(#c084fc)经过(#a855f7)到紫色(#9333ea)
+  - 调整"立即创建"按钮样式，增加阴影效果
+  - 将"创建在线文档"按钮改为深色半透明背景(bg-black/20)，增加backdrop-blur效果
+
+### 更新内容
+
+- 📄 **`src/pages/KnowledgeBasePage.tsx`**：
+  - 更新Banner渐变背景色
+  - 优化按钮样式以匹配设计图
+
+## 1.2.60 (2026-01-24)
+
+### 将YUI loading动画居中到页面正中
+
+- 🎨 **优化内容**：
+  - 将各页面刷新时显示的YUI loading动画移动到页面正中位置
+  - 改善用户加载体验，让loading动画在视觉上更加醒目和居中
+
+### 更新内容
+
+- 📄 **`src/pages/SharePage.tsx`**：将loading动画容器改为 `h-full flex items-center justify-center`
+- 📄 **`src/pages/SettingsPage.tsx`**：将loading动画容器改为 `h-full flex items-center justify-center`
+- 📄 **`src/pages/DashboardPage.tsx`**：将loading动画容器改为 `h-full flex items-center justify-center`
+- 📄 **`src/pages/AllProjectsPage.tsx`**：将loading动画容器改为 `h-[70vh] flex items-center justify-center`
+
 ## 1.3.5 (2026-01-24)
 
 ### 修复刷新后显示默认高频问题而非知识库相关问题的问题

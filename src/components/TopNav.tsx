@@ -1,9 +1,10 @@
 /**
  * 1.0.0: YUIChat 项目 - 顶部导航栏
  * ChatMax 风格设计
+ * 1.3.8: 修复导航时保留 project 参数，确保侧边栏项目菜单正确显示
  */
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,7 +20,17 @@ export function TopNav() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams(); // 1.3.8: 读取URL参数
   const tabs = getTabs(t);
+
+  // 1.3.8: 获取带项目ID的路径
+  const getPathWithProject = (path: string) => {
+    const projectId = searchParams.get('project');
+    if (projectId) {
+      return `${path}?project=${projectId}`;
+    }
+    return path;
+  };
 
   const isActive = (path: string) => {
     if (path === '/knowledge-base/documents') {
@@ -36,7 +47,7 @@ export function TopNav() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => navigate(tab.path)}
+              onClick={() => navigate(getPathWithProject(tab.path))}
               className={`px-4 py-2 text-sm font-medium transition-colors relative ${
                 isActive(tab.path)
                   ? 'text-primary'
@@ -55,8 +66,9 @@ export function TopNav() {
         {/* 1.0.4: 语言切换按钮已移到 Sidebar 用户信息区域 */}
         <div className="flex items-center gap-3">
           {/* Start Conversation Button */}
+          {/* 1.3.8: 导航时保留 project 参数 */}
           <button
-            onClick={() => navigate('/chat')}
+            onClick={() => navigate(getPathWithProject('/chat'))}
             className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors flex items-center gap-2"
           >
             <MessageSquare className="w-4 h-4" />
