@@ -12,6 +12,7 @@
  * 1.2.55: 当知识库没有文档时，显示提示信息并禁用输入框
  * 1.2.56: 修复公开聊天页面继承测试对话历史的问题，公开模式初始化时清空消息
  * 1.2.57: 修复公开模式加载卡住的问题，正确设置loadingDocuments状态，优化异步加载高频问题
+ * 1.2.58: 修复生产环境每次点击测试对话不刷新聊天的问题，首次进入/chat时也需要清空消息
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -308,6 +309,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
 
   // 1.2.3: 检测路由变化，当从其他页面导航到测试对话时，刷新聊天框并显示欢迎语
   // 同时检测 URL 完整路径（包括查询参数）的变化和 _refresh 参数
+  // 1.2.58: 修复首次进入 /chat 时不清空消息的问题（previousPath 为空时也需要处理）
   useEffect(() => {
     const currentPath = location.pathname;
     const currentSearch = location.search;
@@ -338,9 +340,13 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     
     // 如果当前路径是 /chat，且之前不是 /chat，说明是从其他页面导航过来的
     // 或者如果当前路径是 /chat，但 URL 完整路径发生了变化（比如 project 参数变化），也刷新
+    // 1.2.58: 修复条件判断，首次进入（previousPath为空）时也需要清空消息
     if (currentPath === '/chat') {
-      if (previousPath !== '/chat' && previousPath !== '') {
-        // 从其他页面导航到 /chat
+      // 1.2.58: 提取 previousPath 中的路径部分（去掉查询参数）
+      const previousPathOnly = previousPath.split('?')[0];
+      
+      if (previousPathOnly !== '/chat') {
+        // 1.2.58: 从其他页面导航到 /chat（包括首次进入时 previousPath 为空的情况）
         clearMessages();
         // 1.2.11: 重置配置加载标记，使用loadChatConfig统一处理
         if (currentKb) {
@@ -348,9 +354,9 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
           loadChatConfig(currentKb);
         }
         if (import.meta.env.DEV) {
-          logger.log(`Navigated to /chat from ${previousPath}, clearing messages and showing welcome`);
+          logger.log(`Navigated to /chat from ${previousPath || '(initial)'}, clearing messages and showing welcome`);
         }
-      } else if (previousPath === '/chat' && currentFullPath !== previousPathRef.current) {
+      } else if (previousPathOnly === '/chat' && currentFullPath !== previousPath) {
         // 在 /chat 页面内，但 URL 发生了变化（比如点击侧边栏的测试对话）
         clearMessages();
         // 1.2.11: 重置配置加载标记，使用loadChatConfig统一处理
