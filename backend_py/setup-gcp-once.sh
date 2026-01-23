@@ -56,12 +56,13 @@ echo -e "${YELLOW}🔧 [1/4] 设置 GCP 项目...${NC}"
 gcloud config set project "${PROJECT_ID}"
 
 # 启用 API
-echo -e "${YELLOW}🔧 [2/4] 启用必要的 GCP API（这可能需要几分钟）...${NC}"
+echo -e "${YELLOW}🔧 [2/5] 启用必要的 GCP API（这可能需要几分钟）...${NC}"
 gcloud services enable \
     cloudbuild.googleapis.com \
     run.googleapis.com \
     artifactregistry.googleapis.com \
     secretmanager.googleapis.com \
+    cloudtasks.googleapis.com \
     --quiet
 
 echo -e "${GREEN}  ✓ API 已启用${NC}"
@@ -79,8 +80,25 @@ else
     echo -e "${GREEN}  ✓ 仓库 '${AR_REPO_NAME}' 创建成功${NC}"
 fi
 
+# 创建 Cloud Tasks 队列（用于异步问题生成）
+echo -e "${YELLOW}🔧 [4/5] 创建 Cloud Tasks 队列...${NC}"
+TASK_QUEUE_NAME="yuichat-tasks"
+if gcloud tasks queues describe ${TASK_QUEUE_NAME} --location=${REGION} &> /dev/null; then
+    echo -e "${GREEN}  ✓ 队列 '${TASK_QUEUE_NAME}' 已存在${NC}"
+else
+    gcloud tasks queues create ${TASK_QUEUE_NAME} \
+        --location=${REGION} \
+        --max-dispatches-per-second=10 \
+        --max-concurrent-dispatches=5 \
+        --max-attempts=3 \
+        --min-backoff=10s \
+        --max-backoff=300s \
+        --quiet
+    echo -e "${GREEN}  ✓ 队列 '${TASK_QUEUE_NAME}' 创建成功${NC}"
+fi
+
 # 配置 Docker 认证
-echo -e "${YELLOW}🔧 [4/4] 配置 Docker 认证...${NC}"
+echo -e "${YELLOW}🔧 [5/5] 配置 Docker 认证...${NC}"
 gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 echo -e "${GREEN}  ✓ Docker 认证已配置${NC}"
 

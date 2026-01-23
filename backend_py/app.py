@@ -25,6 +25,9 @@ from question_generator import async_generate_questions
 # 1.3.0: 导入问题检索模块（用于获取 follow-up 推荐问题）
 from question_retriever import get_recommended_questions, get_initial_questions
 
+# 1.3.1: 导入 Cloud Tasks 模块（用于异步任务调度）
+from cloud_tasks import trigger_question_generation, is_cloud_tasks_enabled
+
 # 1.2.36: 配置日志记录器，确保生产环境也能记录错误
 logging.basicConfig(
     level=logging.INFO,
@@ -69,8 +72,74 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "YUIChat API",
-        "version": "1.3.0"  # 1.3.0: 推荐问题离线预计算功能
+        "version": "1.3.1"  # 1.3.1: Cloud Tasks 异步任务支持
     }
+
+# 1.3.1: 问题生成 API 端点（供 Cloud Tasks 异步调用）
+@fastapi_app.post("/api/generate-questions")
+async def generate_questions_endpoint(request: Request):
+    """
+    1.3.1: 问题生成 API 端点
+    用于 Cloud Tasks 异步调用，生成并存储推荐问题
+    
+    请求体:
+    {
+        "kb_id": "知识库 UUID",
+        "collection_name": "向量集合名称",
+        "doc_id": "文档 ID（可选）"
+    }
+    """
+    try:
+        data = await request.json()
+        kb_id = data.get("kb_id")
+        collection_name = data.get("collection_name")
+        doc_id = data.get("doc_id")  # 可选
+        
+        if not kb_id or not collection_name:
+            raise HTTPException(status_code=400, detail="Missing kb_id or collection_name")
+        
+        # 验证 collection_name 格式
+        if not isinstance(collection_name, str) or not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
+            raise HTTPException(status_code=400, detail="Invalid collection_name format")
+        
+        logger.info(f"Starting question generation for kb_id={kb_id}, collection={collection_name}")
+        
+        # 执行问题生成
+        result = await async_generate_questions(
+            kb_id=kb_id,
+            collection_name=collection_name,
+            doc_id=doc_id
+        )
+        
+        if result.get("success"):
+            logger.info(f"Question generation completed: {result}")
+            return JSONResponse(content={
+                "status": "success",
+                "questions_generated": result.get("questions_generated", 0),
+                "questions_stored_db": result.get("questions_stored_db", 0),
+                "questions_stored_vector": result.get("questions_stored_vector", 0)
+            })
+        else:
+            logger.warning(f"Question generation failed: {result.get('error')}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": result.get("error", "Unknown error")
+                }
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Question generation API error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)}
+        )
+
 
 @fastapi_app.post("/api/process-file")
 async def process_file(request: Request):
@@ -236,7 +305,7 @@ async def process_file(request: Request):
                 if not supabase:
                     print(f"⚠️ process_file: supabase client not available")
         
-        # 1.3.0: 异步触发推荐问题生成（不阻塞上传响应）
+        # 1.3.1: 触发推荐问题生成（优先使用 Cloud Tasks，否则同步执行）
         if supabase:
             try:
                 # 获取知识库 ID
@@ -248,16 +317,27 @@ async def process_file(request: Request):
                 
                 if kb_result.data:
                     kb_id = kb_result.data.get("id")
-                    # 异步触发问题生成
-                    asyncio.create_task(
-                        async_generate_questions(
-                            kb_id=kb_id,
-                            collection_name=collection_name,
-                            doc_id=None  # 文件上传时可能没有具体的 doc_id
-                        )
-                    )
-                    if os.getenv("ENV") == "development":
-                        print(f"🚀 Triggered async question generation for kb_id={kb_id}")
+                    # 1.3.1: 优先使用 Cloud Tasks 异步触发，否则同步执行
+                    if trigger_question_generation(kb_id, collection_name, doc_id=None):
+                        # Cloud Tasks 已接收任务
+                        if os.getenv("ENV") == "development":
+                            print(f"🚀 Question generation scheduled via Cloud Tasks for kb_id={kb_id}")
+                        else:
+                            logger.info(f"Question generation scheduled via Cloud Tasks for kb_id={kb_id}")
+                    else:
+                        # 回退：同步执行问题生成（确保在 Cloud Run 中也能完成）
+                        try:
+                            qg_result = await async_generate_questions(
+                                kb_id=kb_id,
+                                collection_name=collection_name,
+                                doc_id=None
+                            )
+                            if os.getenv("ENV") == "development":
+                                print(f"✅ Question generation completed (sync): {qg_result}")
+                            else:
+                                logger.info(f"Question generation completed (sync) for kb_id={kb_id}")
+                        except Exception as sync_error:
+                            logger.warning(f"Sync question generation failed (non-blocking): {sync_error}")
             except Exception as qg_error:
                 # 问题生成失败不影响主流程
                 logger.warning(f"Failed to trigger question generation: {qg_error}")
@@ -481,9 +561,9 @@ async def process_url(request: Request):
                     print(f"⚠️ Failed to update word_count for URLs: {e}")
                     print(f"   Traceback: {traceback.format_exc()}")
         
-        # 1.3.0: 异步触发推荐问题生成（只有成功或部分成功时触发）
-        async def trigger_question_generation():
-            """异步触发问题生成的辅助函数"""
+        # 1.3.1: 触发推荐问题生成的辅助函数（优先使用 Cloud Tasks）
+        async def do_trigger_question_generation():
+            """触发问题生成：优先 Cloud Tasks，否则同步执行"""
             if supabase:
                 try:
                     kb_result = supabase.table("knowledge_bases")\
@@ -494,15 +574,26 @@ async def process_url(request: Request):
                     
                     if kb_result.data:
                         kb_id = kb_result.data.get("id")
-                        asyncio.create_task(
-                            async_generate_questions(
-                                kb_id=kb_id,
-                                collection_name=collection_name,
-                                doc_id=None
-                            )
-                        )
-                        if os.getenv("ENV") == "development":
-                            print(f"🚀 Triggered async question generation for kb_id={kb_id}")
+                        # 1.3.1: 优先使用 Cloud Tasks
+                        if trigger_question_generation(kb_id, collection_name, doc_id=None):
+                            if os.getenv("ENV") == "development":
+                                print(f"🚀 Question generation scheduled via Cloud Tasks for kb_id={kb_id}")
+                            else:
+                                logger.info(f"Question generation scheduled via Cloud Tasks for kb_id={kb_id}")
+                        else:
+                            # 回退：同步执行
+                            try:
+                                qg_result = await async_generate_questions(
+                                    kb_id=kb_id,
+                                    collection_name=collection_name,
+                                    doc_id=None
+                                )
+                                if os.getenv("ENV") == "development":
+                                    print(f"✅ Question generation completed (sync): {qg_result}")
+                                else:
+                                    logger.info(f"Question generation completed (sync) for kb_id={kb_id}")
+                            except Exception as sync_error:
+                                logger.warning(f"Sync question generation failed (non-blocking): {sync_error}")
                 except Exception as qg_error:
                     logger.warning(f"Failed to trigger question generation: {qg_error}")
         
@@ -510,7 +601,7 @@ async def process_url(request: Request):
         if error_docs:
             if valid_docs:
                 # 部分成功 - 仍然触发问题生成
-                await trigger_question_generation()
+                await do_trigger_question_generation()
                 return JSONResponse(content={
                     "status": "partial_success",
                     "collection_name": collection_name,
@@ -534,7 +625,7 @@ async def process_url(request: Request):
                 )
         
         # 全部成功 - 触发问题生成
-        await trigger_question_generation()
+        await do_trigger_question_generation()
         return JSONResponse(content={
             "status": "success",
             "collection_name": collection_name,

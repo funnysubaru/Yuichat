@@ -42,3 +42,5 @@ odfpy  # 1.2.48: 读取 ODF 格式（LibreOffice 文档）
 et-xmlfile  # 1.2.48: openpyxl 依赖，处理 xlsx
 defusedxml  # 1.2.48: 安全的 XML 解析
 python-magic  # 1.2.48: 文件类型检测（可选，提升兼容性）
+# 1.3.1: GCP Cloud Tasks - 异步任务队列（用于问题生成等后台任务）
+google-cloud-tasks  # 1.3.1: Cloud Tasks 客户端

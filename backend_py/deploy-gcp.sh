@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║         YUIChat 后端部署到 GCP Cloud Run (v1.3.5)          ║${NC}"
+echo -e "${BLUE}║         YUIChat 后端部署到 GCP Cloud Run (v1.3.9)          ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -106,6 +106,10 @@ echo ""
 echo -e "${CYAN}🚀 [2/3] 部署到 Cloud Run...${NC}"
 DEPLOY_START=$(date +%s)
 
+# 1.3.9: 获取 Cloud Run 服务 URL（用于 Cloud Tasks 回调）
+# 首次部署时可能不存在，使用占位符
+EXISTING_SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format 'value(status.url)' 2>/dev/null || echo "")
+
 gcloud run deploy "${SERVICE_NAME}" \
     --image "${IMAGE_BASE}:${SHORT_SHA}" \
     --platform managed \
@@ -116,7 +120,7 @@ gcloud run deploy "${SERVICE_NAME}" \
     --timeout 3600 \
     --max-instances 10 \
     --min-instances 0 \
-    --set-env-vars "ENV=production,USE_PGVECTOR=true,MAX_CHUNKS=4,RETRIEVE_K=8,CRAWL_TIMEOUT=30000,CRAWL_MAX_RETRIES=3,CRAWL_MAX_CONCURRENT=3,WAIT_NETWORK_IDLE=2000" \
+    --set-env-vars "ENV=production,USE_PGVECTOR=true,MAX_CHUNKS=4,RETRIEVE_K=8,CRAWL_TIMEOUT=30000,CRAWL_MAX_RETRIES=3,CRAWL_MAX_CONCURRENT=3,WAIT_NETWORK_IDLE=2000,GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},GCP_TASK_QUEUE=yuichat-tasks" \
     --set-secrets "SUPABASE_URL=supabase-url:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest,OPENAI_API_KEY=openai-api-key:latest,PGVECTOR_DATABASE_URL=pgvector-database-url:latest" \
     --quiet
 
@@ -126,10 +130,18 @@ echo -e "${GREEN}  ✓ 部署完成 (耗时: ${DEPLOY_TIME}秒)${NC}"
 echo ""
 
 # ============================================================================
-# 获取服务信息
+# 获取服务信息并更新 Cloud Tasks 回调 URL
 # ============================================================================
-echo -e "${CYAN}📍 [3/3] 获取服务信息...${NC}"
+echo -e "${CYAN}📍 [3/4] 获取服务信息...${NC}"
 SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format 'value(status.url)')
+
+# 1.3.9: 更新 CLOUD_RUN_SERVICE_URL 环境变量（用于 Cloud Tasks 回调）
+echo -e "${CYAN}🔧 [4/4] 更新 Cloud Tasks 回调 URL...${NC}"
+gcloud run services update "${SERVICE_NAME}" \
+    --region "${REGION}" \
+    --update-env-vars "CLOUD_RUN_SERVICE_URL=${SERVICE_URL}" \
+    --quiet
+echo -e "${GREEN}  ✓ Cloud Tasks 回调 URL 已配置${NC}"
 
 TOTAL_TIME=$((BUILD_TIME + DEPLOY_TIME))
 

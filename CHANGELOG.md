@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.3.9 (2026-01-24)
+
+### 修复生产环境关联问题（follow-up questions）不显示的问题
+
+- 🐛 **问题原因**：
+  - 在 Cloud Run 中使用 `asyncio.create_task()` 创建后台任务不可靠
+  - HTTP 请求处理完成后，后台任务可能会被中断或根本不执行
+  - 导致 `recommended_questions` 表为空，无法返回 follow-up 问题
+
+- ✅ **解决方案**：
+  - 新增 GCP Cloud Tasks 支持，用于可靠的异步任务调度
+  - 文档上传时通过 Cloud Tasks 触发问题生成
+  - 如果 Cloud Tasks 未配置，自动回退到同步执行
+
+### 更新内容
+
+- 📄 **`backend_py/requirements.txt`**：
+  - 添加 `google-cloud-tasks` 依赖
+
+- 📄 **`backend_py/cloud_tasks.py`**（新建）：
+  - Cloud Tasks 工具模块
+  - `trigger_question_generation()` - 触发问题生成任务
+  - `is_cloud_tasks_enabled()` - 检查 Cloud Tasks 是否可用
+  - 自动回退机制：未配置时使用同步执行
+
+- 📄 **`backend_py/app.py`**：
+  - 新增 `/api/generate-questions` 端点供 Cloud Tasks 调用
+  - 修改文件上传和 URL 处理逻辑，优先使用 Cloud Tasks
+  - 版本更新到 1.3.1
+
+- 📄 **`backend_py/GCP_CLOUD_TASKS_SETUP.md`**（新建）：
+  - Cloud Tasks 配置指南
+  - 包括队列创建、IAM 权限、环境变量设置
+
+### GCP 配置需求
+
+需要设置以下环境变量才能启用 Cloud Tasks：
+- `GCP_PROJECT_ID` - GCP 项目 ID
+- `GCP_LOCATION` - 队列区域（如 asia-northeast1）
+- `GCP_TASK_QUEUE` - 队列名称（如 yuichat-tasks）
+- `CLOUD_RUN_SERVICE_URL` - Cloud Run 服务 URL
+
+详见 `backend_py/GCP_CLOUD_TASKS_SETUP.md`
+
 ## 1.3.8 (2026-01-24)
 
 ### 修复知识库页面"开始对话"按钮跳转后侧边栏缺少项目菜单的问题
