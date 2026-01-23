@@ -86,9 +86,11 @@ export async function signInWithEmail(
 /**
  * Sign in with Google OAuth
  */
+// 1.2.57: 修复 Google 登录后重定向到错误域名的问题
 export async function signInWithGoogle(): Promise<{ error: AuthError | null }> {
   try {
-    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    // 1.2.57: 使用当前域名作为重定向目标，确保登录后返回正确的域名
+    const redirectTo = window.location.origin;
     
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',

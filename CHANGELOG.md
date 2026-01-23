@@ -1,6 +1,53 @@
 # Changelog
 
-## 1.2.56 (2026-01-22)
+## 1.2.57 (2026-01-23)
+
+### 更新自定义域名
+
+- 🌐 **域名配置**：将 meta 标签中的 `yuichat.vercel.app` 更新为 `yuichat.app`
+  - 更新 Open Graph URL 和图片地址
+  - 更新 Twitter Card 图片地址
+
+### 更新内容
+
+- 📄 **`index.html`**：更新 OG 和 Twitter meta 标签使用自定义域名
+
+---
+
+## 1.2.56 (2026-01-23)
+
+### 修复公开聊天页面历史继承问题
+
+- 🐛 **问题现象**：在同一浏览器中，打开公开聊天页面后，会继承内部测试对话的历史记录
+- 🔍 **根因分析**：
+  - `chatStore` 使用 `zustand` 的 `persist` 中间件将消息保存到 `localStorage`
+  - 公开聊天页面（`PublicChatPage`）加载时没有清空之前的消息历史
+- ✅ **解决方案**：在公开模式首次挂载时清空所有消息和对话ID
+
+### 优化不同终端加载时间
+
+- ⚡ **问题现象**：其他用户在其他终端打开公开聊天页面时加载时间非常长（可能超过30秒）
+- 🔍 **根因分析**：
+  - 高频问题 API (`/api/frequent-questions`) 需要从向量数据库检索文档并调用 LLM 生成问题
+  - 界面在等待高频问题加载完成前显示全屏 loading 状态
+- ✅ **解决方案**：
+  - 优化加载策略：欢迎语和头像先显示，高频问题异步加载
+  - 高频问题加载时显示骨架屏动画，而不是阻塞整个界面
+  - 加载失败时使用默认问题作为后备
+
+### 更新内容
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 添加 `publicModeInitializedRef` 确保公开模式首次加载时清空历史
+  - 修改 loading 条件：从 `!chatConfig || loadingQuestions || loadingDocuments` 改为 `!chatConfig || loadingDocuments`
+  - 高频问题区域改用骨架屏动画展示加载状态
+  - 优化 `loadChatConfig` 函数：先设置 chatConfig 再异步获取问题
+
+- 📄 **`VERSION`**：更新版本号为 1.2.56
+
+---
+
+## 1.2.56 (2026-01-22) [旧版本]
 
 ### 修复本地环境文件上传失败的问题
 
