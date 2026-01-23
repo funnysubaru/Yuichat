@@ -1,4 +1,4 @@
-# 1.2.46: Cloud Build 配置 - 使用 Kaniko 加速构建
+# 1.3.5: Cloud Build 配置 - 使用 Kaniko 加速构建
 # Kaniko 优势：
 # - 更好的层缓存支持
 # - 无需 Docker daemon
@@ -14,7 +14,7 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
-  # 1.2.46: 使用 Kaniko 构建（更好的缓存支持）
+  # 1.3.5: 使用 Kaniko 构建（更好的缓存支持）
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-and-push'
     args:
@@ -27,21 +27,12 @@ steps:
       # 缓存配置 - 这是加速的关键！
       - '--cache=true'
       - '--cache-ttl=168h'  # 缓存保留7天
-      - '--cache-repo=${_IMAGE}/cache'
       # 快照模式 - 更快的层检测
       - '--snapshot-mode=redo'
       # 压缩级别 - 平衡构建速度和镜像大小
       - '--compressed-caching=false'
       # 使用新的快照器（更快）
       - '--use-new-run=true'
-      # 跳过 TLS 验证（Artifact Registry 不需要）
-      - '--skip-tls-verify-registry=${_IMAGE}'
-
-# 声明构建产物
-images:
-  - '${_IMAGE}:${SHORT_SHA}'
-  - '${_IMAGE}:${_VERSION}'
-  - '${_IMAGE}:latest'
 
 # 替换变量（由 gcloud builds submit 传入）
 substitutions:
