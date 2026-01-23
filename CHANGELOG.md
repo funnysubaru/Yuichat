@@ -2,6 +2,17 @@
 
 ## 1.3.9 (2026-01-24)
 
+### 移除知识库页面右上角的系统loading提示
+
+- 🗑️ **移除内容**：
+  - 移除文档重新学习时右上角显示的"再読み込み中..."loading提示
+  - 避免多个loading提示同时显示影响用户体验
+
+- 📄 **`src/pages/KnowledgeBasePage.tsx`**：
+  - 注释掉 `toast.loading()` 调用
+
+---
+
 ### 修复生产环境关联问题（follow-up questions）不显示的问题
 
 - 🐛 **问题原因**：

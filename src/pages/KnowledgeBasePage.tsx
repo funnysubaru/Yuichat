@@ -396,7 +396,8 @@ export function KnowledgeBasePage() {
     }
 
     try {
-      toast.loading(t('reloading'), { id: `relearn-${documentId}` });
+      // 1.3.8: 移除loading提示，避免右上角显示过多系统提示
+      // toast.loading(t('reloading'), { id: `relearn-${documentId}` });
 
       // 将文档状态改为 processing
       await supabase
