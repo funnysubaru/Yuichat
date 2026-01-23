@@ -1,4 +1,4 @@
-// 1.3.0: YUIChat 项目 - 国际化配置 (添加 follow_up 推荐问题多语言)
+// 1.3.7: YUIChat 项目 - 国际化配置 (添加知识库Banner 4步流程多语言)
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
@@ -306,6 +306,14 @@ const resources = {
       
       // 1.3.0: follow_up 推荐问题
       followUpQuestions: '您可能还想问：',
+      
+      // 1.3.7: 知识库Banner 4步流程
+      bannerTitle4Steps: '4步快速创建知识库',
+      bannerSubtitle4Steps: '上传文件，网站URL',
+      stepUploadDoc: '上传文档',
+      stepWaitLearning: '等待学习完成',
+      stepTestChat: '点击测试对话',
+      stepShareLink: '分享链接',
     }
   },
   ja: {
@@ -601,6 +609,14 @@ const resources = {
       
       // 1.3.0: follow_up 推奨質問
       followUpQuestions: '他にもこんな質問ができます：',
+      
+      // 1.3.7: ナレッジベースBanner 4ステップフロー
+      bannerTitle4Steps: '4ステップでナレッジベースを作成',
+      bannerSubtitle4Steps: 'ファイル、ウェブサイトURLをアップロード',
+      stepUploadDoc: 'ドキュメントをアップロード',
+      stepWaitLearning: '学習完了を待つ',
+      stepTestChat: 'テストチャットをクリック',
+      stepShareLink: 'リンクを共有',
     }
   },
   en: {
@@ -896,6 +912,14 @@ const resources = {
       
       // 1.3.0: follow_up recommended questions
       followUpQuestions: 'You might also want to ask:',
+      
+      // 1.3.7: Knowledge Base Banner 4-step flow
+      bannerTitle4Steps: '4 Steps to Create Knowledge Base',
+      bannerSubtitle4Steps: 'Upload files, website URLs',
+      stepUploadDoc: 'Upload Documents',
+      stepWaitLearning: 'Wait for Learning',
+      stepTestChat: 'Test Chat',
+      stepShareLink: 'Share Link',
     }
   }
 };

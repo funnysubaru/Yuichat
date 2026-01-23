@@ -2,6 +2,8 @@
  * 1.0.0: YUIChat 项目 - 知识库管理页面
  * ChatMax 风格的 UI 设计
  * 1.2.59: 修复文档列表最后一行删除按钮被遮挡的问题
+ * 1.3.6: 根据设计图更新Banner样式，调整渐变色和按钮样式
+ * 1.3.7: 根据新设计更新Banner，添加4步工作流程展示
  */
 
 import { useState, useEffect } from 'react';
@@ -613,27 +615,119 @@ export function KnowledgeBasePage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Banner */}
-      <div className="bg-gradient-to-r from-primary to-primary-dark text-white p-8 md:p-12">
-        <div className="max-w-7xl mx-auto">
+      {/* 1.3.7: Banner - 严格按照设计图制作4步工作流程展示 */}
+      <div 
+        className="text-white py-6 md:py-8 px-4 md:px-8"
+        style={{ background: 'linear-gradient(to right, #8B3DC4 0%, #9B4DCA 50%, #C74BD9 100%)' }}
+      >
+        <div className="max-w-5xl mx-auto text-center">
+          {/* 主标题 - 调整为与原设计一致的大小 */}
           <h1 className="text-2xl md:text-3xl font-bold mb-2">
-            {t('knowledgeBaseTitle')}
+            {t('bannerTitle4Steps')}
           </h1>
-          <p className="text-lg md:text-xl text-white/90 mb-6">
-            {t('knowledgeBaseSubtitle')}
+          {/* 副标题 */}
+          <p className="text-sm md:text-base text-white/90 mb-4">
+            {t('bannerSubtitle4Steps')}
           </p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setIsUploadModalOpen(true)}
-              className="px-6 py-3 bg-white text-primary rounded-lg hover:bg-gray-100 transition-colors font-medium"
-            >
-              {t('createNow')}
-            </button>
-            <button
-              className="px-6 py-3 border-2 border-white text-white rounded-lg hover:bg-white/10 transition-colors font-medium"
-            >
-              {t('createOnlineDoc')}
-            </button>
+          {/* 立即创建按钮 */}
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="px-6 py-2.5 bg-white text-primary rounded-lg hover:shadow-lg hover:-translate-y-0.5 transition-all font-medium text-sm mb-6 md:mb-8"
+          >
+            {t('createNow')}
+          </button>
+        </div>
+        
+        {/* 4步工作流程展示 */}
+        <div className="flex justify-center items-center gap-6 md:gap-10 lg:gap-16">
+          {/* 步骤1: 上传文档 - 文档+上传箭头图标 (自定义SVG匹配设计图) */}
+          <div className="flex flex-col items-center">
+            <svg className="w-10 h-10 md:w-14 md:h-14 lg:w-16 lg:h-16" viewBox="0 0 64 64" fill="none">
+              {/* 文档外形 */}
+              <path d="M16 8h24l12 12v36a4 4 0 01-4 4H16a4 4 0 01-4-4V12a4 4 0 014-4z" stroke="white" strokeWidth="2.5" fill="none"/>
+              {/* 文档折角 */}
+              <path d="M40 8v12h12" stroke="white" strokeWidth="2.5" fill="none"/>
+              {/* 上传箭头 */}
+              <path d="M32 48V28M24 36l8-8 8 8" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="text-xs md:text-sm mt-3 font-medium whitespace-nowrap">{t('stepUploadDoc')}</span>
+          </div>
+          
+          {/* 箭头 */}
+          <svg className="w-6 h-6 md:w-8 md:h-8 text-white/50 hidden sm:block flex-shrink-0" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h14M14 7l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          
+          {/* 步骤2: 等待学习完成 - 放射状加载图标 (匹配设计图样式) */}
+          <div className="flex flex-col items-center">
+            <svg className="w-10 h-10 md:w-14 md:h-14 lg:w-16 lg:h-16" viewBox="0 0 64 64" fill="none">
+              {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle, i) => {
+                const rad = (angle * Math.PI) / 180;
+                const x1 = 32 + 12 * Math.cos(rad);
+                const y1 = 32 + 12 * Math.sin(rad);
+                const x2 = 32 + 24 * Math.cos(rad);
+                const y2 = 32 + 24 * Math.sin(rad);
+                // 渐变透明度，模拟加载动画效果
+                const opacity = 0.3 + (((12 - i) % 12) / 12) * 0.7;
+                return (
+                  <line
+                    key={i}
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="white"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    opacity={opacity}
+                  />
+                );
+              })}
+            </svg>
+            <span className="text-xs md:text-sm mt-3 font-medium whitespace-nowrap">{t('stepWaitLearning')}</span>
+          </div>
+          
+          {/* 箭头 */}
+          <svg className="w-6 h-6 md:w-8 md:h-8 text-white/50 hidden sm:block flex-shrink-0" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h14M14 7l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          
+          {/* 步骤3: 点击测试对话 - 双气泡对话图标 (自定义SVG匹配设计图) */}
+          <div className="flex flex-col items-center">
+            <svg className="w-10 h-10 md:w-14 md:h-14 lg:w-16 lg:h-16" viewBox="0 0 64 64" fill="none">
+              {/* 后面的气泡 */}
+              <rect x="20" y="8" width="36" height="28" rx="4" stroke="white" strokeWidth="2.5"/>
+              {/* 后气泡内的线条 */}
+              <line x1="28" y1="18" x2="48" y2="18" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+              <line x1="28" y1="26" x2="44" y2="26" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+              {/* 前面的气泡 */}
+              <rect x="8" y="28" width="32" height="24" rx="4" stroke="white" strokeWidth="2.5" fill="#9B4DCA"/>
+              {/* 前气泡内的线条 */}
+              <line x1="16" y1="38" x2="32" y2="38" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+              <line x1="16" y1="46" x2="28" y2="46" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+            <span className="text-xs md:text-sm mt-3 font-medium whitespace-nowrap">{t('stepTestChat')}</span>
+          </div>
+          
+          {/* 箭头 */}
+          <svg className="w-6 h-6 md:w-8 md:h-8 text-white/50 hidden sm:block flex-shrink-0" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h14M14 7l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          
+          {/* 步骤4: 分享链接 - 三点连线分享图标 (自定义SVG匹配设计图) */}
+          <div className="flex flex-col items-center">
+            <svg className="w-10 h-10 md:w-14 md:h-14 lg:w-16 lg:h-16" viewBox="0 0 64 64" fill="none">
+              {/* 右上角圆点 */}
+              <circle cx="48" cy="16" r="8" stroke="white" strokeWidth="2.5"/>
+              {/* 左中间圆点 */}
+              <circle cx="16" cy="32" r="8" stroke="white" strokeWidth="2.5"/>
+              {/* 右下角圆点 */}
+              <circle cx="48" cy="48" r="8" stroke="white" strokeWidth="2.5"/>
+              {/* 连接线 */}
+              <line x1="23" y1="28" x2="41" y2="20" stroke="white" strokeWidth="2.5"/>
+              <line x1="23" y1="36" x2="41" y2="44" stroke="white" strokeWidth="2.5"/>
+            </svg>
+            <span className="text-xs md:text-sm mt-3 font-medium whitespace-nowrap">{t('stepShareLink')}</span>
           </div>
         </div>
       </div>

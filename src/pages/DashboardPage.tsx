@@ -94,9 +94,10 @@ export function DashboardPage() {
     loadData();
   }, [searchParams.get('project')]);
 
+  // 1.2.60: 将loading动画居中到页面正中
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
       </div>
     );
