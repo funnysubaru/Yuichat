@@ -10,6 +10,8 @@
  * 1.2.23: 实现项目头像显示功能，消息列表和加载状态都使用项目设置的头像，未设置时使用默认头像
  * 1.2.52: 修复语言切换后AI回复语言不正确的问题，在聊天请求中传递language参数
  * 1.2.55: 当知识库没有文档时，显示提示信息并禁用输入框
+ * 1.2.56: 修复公开聊天页面继承测试对话历史的问题，公开模式初始化时清空消息
+ * 1.2.57: 修复公开模式加载卡住的问题，正确设置loadingDocuments状态，优化异步加载高频问题
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -121,6 +123,21 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
   // 1.2.25: 支持外部传入知识库对象（用于公开分享页面）
   const projectId = searchParams.get('project'); // 1.1.15: 在useEffect外部获取，避免依赖问题
   
+  // 1.2.56: 公开模式初始化时清空消息，防止继承测试对话的历史记录
+  // 使用 ref 确保只在组件首次挂载时执行一次
+  const publicModeInitializedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (isPublicMode && !publicModeInitializedRef.current) {
+      // 公开模式首次加载时清空所有消息，确保用户看到的是全新对话
+      clearMessages();
+      setCurrentConversationId(null);
+      publicModeInitializedRef.current = true;
+      if (import.meta.env.DEV) {
+        logger.log('PublicMode initialized: cleared message history to start fresh conversation');
+      }
+    }
+  }, [isPublicMode, clearMessages, setCurrentConversationId]);
+  
   useEffect(() => {
     async function loadKB() {
       // 1.2.25: 如果是公开模式且提供了外部知识库，直接使用
@@ -143,6 +160,11 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
           configLoadedRef.current = null;
         }
         
+        // 1.2.57: 公开模式下不需要检查文档数量，直接设置为有文档
+        // 公开分享的知识库默认是有内容的，检查文档数会增加不必要的延迟
+        setHasDocuments(true);
+        setLoadingDocuments(false);
+        
         // 设置聊天配置
         const config = externalKb.chat_config || {};
         const currentLang = i18n.language.split('-')[0];
@@ -151,20 +173,19 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         const welcomeMessage = config.welcome_message?.[lang] || config.welcome_message?.zh || t('chatWelcomeMessage');
         const recommendedQuestions = config.recommended_questions?.[lang] || [];
         
+        // 1.2.57: 立即设置 chatConfig，让界面先显示欢迎语
+        setChatConfig({
+          avatarUrl,
+          welcomeMessage,
+          recommendedQuestions: recommendedQuestions.length > 0 ? recommendedQuestions.slice(0, 3) : []
+        });
+        
         if (recommendedQuestions.length > 0) {
-          setChatConfig({
-            avatarUrl,
-            welcomeMessage,
-            recommendedQuestions: recommendedQuestions.slice(0, 3)
-          });
+          // 有配置的推荐问题，不需要从API获取
           setLoadingQuestions(false);
         } else {
-          // 1.2.39: 保留已有的推荐问题，避免覆盖API返回的结果
-          setChatConfig(prev => ({
-            avatarUrl,
-            welcomeMessage,
-            recommendedQuestions: prev?.recommendedQuestions || []
-          }));
+          // 1.2.57: 没有配置推荐问题，需要从API异步加载
+          setLoadingQuestions(true);
         }
         
         // 如果消息为空且配置未加载，触发加载
@@ -518,6 +539,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
   // 1.2.4: 加载聊天配置的辅助函数
   // 1.2.11: 添加防重复加载逻辑
   // 1.2.12: 在加载问题时先设置loading状态，避免显示默认问题
+  // 1.2.56: 优化加载体验 - 先显示欢迎语，异步加载高频问题
   const loadChatConfig = useCallback((kb: any) => {
     if (!kb) return;
     
@@ -534,20 +556,21 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     let recommendedQuestions = config.recommended_questions?.[lang] || [];
     
     if (recommendedQuestions.length === 0) {
-      // 1.2.12: 如果chatConfig还未设置（欢迎语和头像），先设置一次
-      // 注意：如果loadKB中已经设置了chatConfig，这里不需要重复设置
-      // 但为了确保数据一致，这里只在chatConfig为null时才设置
-      if (!chatConfig) {
-        setChatConfig({
-          avatarUrl,
-          welcomeMessage,
-          recommendedQuestions: []
-        });
-      }
+      // 1.2.56: 立即设置 chatConfig（欢迎语和头像），让界面先显示
+      setChatConfig({
+        avatarUrl,
+        welcomeMessage,
+        recommendedQuestions: []
+      });
+      
+      // 1.2.56: 标记高频问题正在加载（用于显示骨架屏）
+      setLoadingQuestions(true);
       
       // 1.2.12: fetchFrequentQuestions 内部已管理 loading 状态，这里直接调用
       fetchFrequentQuestions(lang).then((questions) => {
-        console.log('[DEBUG] fetchFrequentQuestions resolved with:', questions);
+        if (import.meta.env.DEV) {
+          console.log('[DEBUG] fetchFrequentQuestions resolved with:', questions);
+        }
         // 1.2.11: 标记已加载
         configLoadedRef.current = kb.id;
         // 1.2.12: 更新chatConfig，添加推荐问题
@@ -556,17 +579,17 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
           welcomeMessage,
           recommendedQuestions: questions.slice(0, 3)
         });
-        console.log('[DEBUG] chatConfig updated with questions:', questions.slice(0, 3));
+        if (import.meta.env.DEV) {
+          console.log('[DEBUG] chatConfig updated with questions:', questions.slice(0, 3));
+        }
       }).catch((error) => {
-        console.error('[DEBUG] fetchFrequentQuestions error:', error);
+        if (import.meta.env.DEV) {
+          console.error('[DEBUG] fetchFrequentQuestions error:', error);
+        }
         // 1.2.11: 即使失败也标记已加载，避免重复请求
         configLoadedRef.current = kb.id;
-        // 1.2.12: 失败时保持现有的chatConfig（欢迎语和头像），推荐问题为空
-        setChatConfig({
-          avatarUrl,
-          welcomeMessage,
-          recommendedQuestions: []
-        });
+        // 1.2.56: 失败时保持现有的chatConfig（欢迎语和头像），使用默认问题
+        // setLoadingQuestions(false) 会在 fetchFrequentQuestions 内部调用
       });
     } else {
       // 1.2.11: 标记已加载
@@ -1193,8 +1216,9 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
             </div>
           ) : (
           // 1.2.7: 优化欢迎界面UI，使其更像聊天消息样式
-          // 1.2.12: 如果chatConfig还未加载或问题还在加载中，显示loading状态，避免欢迎语和问题不同步显示
-          !chatConfig || loadingQuestions || loadingDocuments ? (
+          // 1.2.12: 如果chatConfig还未加载，显示loading状态
+          // 1.2.56: 优化加载体验 - 只等待 chatConfig 和文档检查，高频问题可以异步加载
+          !chatConfig || loadingDocuments ? (
             <div className="flex flex-col min-h-full py-8">
               {/* Loading状态 - 聊天消息样式 */}
               <div className="flex gap-3 justify-start">
@@ -1246,31 +1270,46 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                 </div>
               </div>
 
-            {/* 推荐问题按钮 - 1.2.12: 所有内容加载完成后一起显示 */}
+            {/* 推荐问题按钮 - 1.2.56: 异步加载时显示骨架屏或默认问题 */}
             <div className="space-y-3 max-w-3xl ml-[52px]" key={chatConfig?.recommendedQuestions?.join(',') || 'default'}>
-              {/* 1.2.39: 简化渲染逻辑，直接渲染推荐问题或默认问题 */}
-              {(chatConfig?.recommendedQuestions && chatConfig.recommendedQuestions.length > 0
-                ? chatConfig.recommendedQuestions
-                : [t('defaultQuestion1'), t('defaultQuestion2'), t('defaultQuestion3')]
-              ).map((question: string, index: number) => (
-                <motion.button
-                  key={`question-${question.substring(0, 20)}-${index}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleRecommendedQuestionClick(question);
-                  }}
-                  disabled={isTyping}
-                  className="w-full px-4 py-3 text-left bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <span className="text-gray-800 text-sm">
-                    {question}
-                  </span>
-                </motion.button>
-              ))}
+              {/* 1.2.56: 如果正在加载问题且没有缓存的问题，显示骨架屏 */}
+              {loadingQuestions && (!chatConfig?.recommendedQuestions || chatConfig.recommendedQuestions.length === 0) ? (
+                // 骨架屏加载动画
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={`skeleton-${i}`}
+                      className="w-full px-4 py-3 bg-gray-100 rounded-xl animate-pulse"
+                    >
+                      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                // 1.2.39: 简化渲染逻辑，直接渲染推荐问题或默认问题
+                (chatConfig?.recommendedQuestions && chatConfig.recommendedQuestions.length > 0
+                  ? chatConfig.recommendedQuestions
+                  : [t('defaultQuestion1'), t('defaultQuestion2'), t('defaultQuestion3')]
+                ).map((question: string, index: number) => (
+                  <motion.button
+                    key={`question-${question.substring(0, 20)}-${index}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleRecommendedQuestionClick(question);
+                    }}
+                    disabled={isTyping}
+                    className="w-full px-4 py-3 text-left bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <span className="text-gray-800 text-sm">
+                      {question}
+                    </span>
+                  </motion.button>
+                ))
+              )}
             </div>
 
             {/* 1.2.8: 添加免责声明 */}

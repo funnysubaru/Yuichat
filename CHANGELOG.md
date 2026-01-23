@@ -8,9 +8,34 @@
   - 更新 Open Graph URL 和图片地址
   - 更新 Twitter Card 图片地址
 
+### 修复公开聊天页面历史继承和加载问题
+
+- 🐛 **问题现象1**：在同一浏览器中，打开公开聊天页面后，会继承内部测试对话的历史记录
+- 🔍 **根因分析**：
+  - `chatStore` 使用 `zustand` 的 `persist` 中间件将消息保存到 `localStorage`
+  - 公开聊天页面（`PublicChatPage`）加载时没有清空之前的消息历史
+- ✅ **解决方案**：在公开模式首次挂载时清空所有消息和对话ID
+
+- 🐛 **问题现象2**：公开页面一直显示 loading，无法显示欢迎语和问题
+- 🔍 **根因分析**：
+  - 公开模式下没有设置 `loadingDocuments = false`
+  - 界面在 `!chatConfig || loadingDocuments` 条件下显示 loading
+- ✅ **解决方案**：在公开模式加载知识库时正确设置 `setHasDocuments(true)` 和 `setLoadingDocuments(false)`
+
+- ⚡ **优化加载体验**：
+  - 欢迎语和头像先显示，高频问题异步加载
+  - 高频问题加载时显示骨架屏动画，而不是阻塞整个界面
+  - 加载失败时使用默认问题作为后备
+
 ### 更新内容
 
 - 📄 **`index.html`**：更新 OG 和 Twitter meta 标签使用自定义域名
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 添加 `publicModeInitializedRef` 确保公开模式首次加载时清空历史
+  - 公开模式下正确设置 `loadingDocuments` 和 `hasDocuments` 状态
+  - 修改 loading 条件：从 `!chatConfig || loadingQuestions || loadingDocuments` 改为 `!chatConfig || loadingDocuments`
+  - 高频问题区域改用骨架屏动画展示加载状态
+  - 优化 `loadChatConfig` 函数：先设置 chatConfig 再异步获取问题
 
 ---
 
