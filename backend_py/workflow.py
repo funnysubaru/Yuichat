@@ -37,8 +37,9 @@ DATABASE_URL = os.getenv("PGVECTOR_DATABASE_URL") or os.getenv("DATABASE_URL")
 # 1.2.12: 文档片段数量配置 - 支持可配置的文档片段数量限制
 # MAX_CHUNKS: 最终使用的文档片段数量（默认4）
 MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "4"))
-# RETRIEVE_K: 检索时获取的文档数量，应该比 MAX_CHUNKS 大以便过滤错误文档（默认8）
-RETRIEVE_K = int(os.getenv("RETRIEVE_K", "8"))
+# RETRIEVE_K: 检索时获取的文档数量，应该比 MAX_CHUNKS 大以便过滤错误文档
+# 1.3.12: 从8增加到12，确保能检索到更多相关文档，包括可能排名靠后的关键信息
+RETRIEVE_K = int(os.getenv("RETRIEVE_K", "12"))
 
 # 1.1.3: 如果启用 pgvector，导入 vecs 库
 # 1.2.56: Chroma 改为条件导入，避免在使用 pgvector 时仍需安装 chromadb
@@ -325,9 +326,37 @@ def split_text_node(state: GraphState):
         if os.getenv("ENV") == "development":
             print("⚠️ 所有文档都是错误文档，跳过切片")
         return {"splits": state.get('splits', [])}
+    
+    # 1.3.12: 优化切分策略 - 为每个chunk添加文档标题/来源前缀
+    # 这样可以确保每个块都包含足够的上下文信息，提高检索准确性
+    enriched_docs = []
+    for doc in valid_docs:
+        source = doc.metadata.get('source', doc.metadata.get('url', ''))
+        title = doc.metadata.get('title', '')
         
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    splits = text_splitter.split_documents(valid_docs)
+        # 1.3.12: 构建上下文前缀（包含来源和标题信息）
+        context_prefix = ""
+        if title and title.strip():
+            context_prefix += f"【文档标题】{title.strip()}\n"
+        if source and source.strip():
+            context_prefix += f"【来源】{source.strip()}\n"
+        
+        # 1.3.12: 如果有前缀，添加到文档内容开头
+        if context_prefix:
+            enriched_content = f"{context_prefix}\n{doc.page_content}"
+            enriched_doc = Document(
+                page_content=enriched_content,
+                metadata=doc.metadata
+            )
+            enriched_docs.append(enriched_doc)
+        else:
+            enriched_docs.append(doc)
+    
+    # 1.3.12: 优化切分参数
+    # - chunk_size 保持1000，足够包含完整段落
+    # - chunk_overlap 从200增加到300，确保跨块信息不丢失（特别是开头的日期等关键信息）
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=300)
+    splits = text_splitter.split_documents(enriched_docs)
     
     if os.getenv("ENV") == "development":
         print(f"Split into {len(splits)} chunks")
@@ -672,36 +701,40 @@ def chat_node(state: GraphState):
     
     # 1.2.52: 多语言系统提示词
     # 1.3.11: 优化提示词，让AI更好地利用上下文中的相关信息
+    # 1.3.12: 优化提示词，避免AI在回复中以"根据上下文"等词语开头
     system_prompts = {
-        'zh': """你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。
+        'zh': """你是一个专业的知识库助手。
 
 回答指南：
-1. 优先使用上下文中的信息来回答问题
-2. 如果上下文包含与问题相关的信息，即使不能完全回答问题，也请提供相关的信息并说明
-3. 只有当上下文完全没有任何相关信息时，才说你在知识库中没有找到相关信息
-4. 请使用中文回复
+1. 直接回答用户的问题，不要以"根据提供的上下文"、"根据上下文"等词语开头
+2. 使用下方参考资料中的信息来回答
+3. 如果参考资料包含与问题相关的信息，即使不能完全回答，也请提供相关信息
+4. 只有当参考资料完全没有任何相关信息时，才说无法找到相关信息
+5. 使用中文回复
 
-上下文:
+参考资料:
 {context}""",
-        'en': """You are a professional knowledge base assistant. Please answer the user's question based on the context provided below.
+        'en': """You are a professional knowledge base assistant.
 
 Answer Guidelines:
-1. Prioritize using information from the context to answer questions
-2. If the context contains information related to the question, even if it cannot fully answer the question, please provide relevant information and explain
-3. Only say you couldn't find relevant information when the context has absolutely nothing related
-4. Please respond in English
+1. Answer the user's question directly, do not start with "Based on the context" or similar phrases
+2. Use information from the reference materials below to answer
+3. If the reference materials contain related information, provide it even if it cannot fully answer the question
+4. Only say you couldn't find relevant information when the reference materials have absolutely nothing related
+5. Respond in English
 
-Context:
+Reference Materials:
 {context}""",
-        'ja': """あなたはプロフェッショナルなナレッジベースアシスタントです。以下に提供されたコンテキストに基づいてユーザーの質問に答えてください。
+        'ja': """あなたはプロフェッショナルなナレッジベースアシスタントです。
 
 回答ガイドライン：
-1. 質問に答えるためにコンテキスト内の情報を優先的に使用してください
-2. コンテキストに質問に関連する情報が含まれている場合、完全に回答できなくても関連情報を提供し、説明してください
-3. コンテキストに全く関連する情報がない場合のみ、関連情報が見つからなかったと述べてください
-4. 日本語で回答してください
+1. ユーザーの質問に直接答えてください。「提供されたコンテキストに基づいて」などの言葉で始めないでください
+2. 以下の参考資料の情報を使用して回答してください
+3. 参考資料に関連する情報が含まれている場合、完全に回答できなくても関連情報を提供してください
+4. 参考資料に全く関連する情報がない場合のみ、関連情報が見つからなかったと述べてください
+5. 日本語で回答してください
 
-コンテキスト:
+参考資料:
 {context}"""
     }
     
@@ -935,36 +968,40 @@ async def chat_node_stream(state: GraphState):
     
     # 1.2.52: 多语言系统提示词
     # 1.3.11: 优化提示词，让AI更好地利用上下文中的相关信息
+    # 1.3.12: 优化提示词，避免AI在回复中以"根据上下文"等词语开头
     system_prompts = {
-        'zh': """你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。
+        'zh': """你是一个专业的知识库助手。
 
 回答指南：
-1. 优先使用上下文中的信息来回答问题
-2. 如果上下文包含与问题相关的信息，即使不能完全回答问题，也请提供相关的信息并说明
-3. 只有当上下文完全没有任何相关信息时，才说你在知识库中没有找到相关信息
-4. 请使用中文回复
+1. 直接回答用户的问题，不要以"根据提供的上下文"、"根据上下文"等词语开头
+2. 使用下方参考资料中的信息来回答
+3. 如果参考资料包含与问题相关的信息，即使不能完全回答，也请提供相关信息
+4. 只有当参考资料完全没有任何相关信息时，才说无法找到相关信息
+5. 使用中文回复
 
-上下文:
+参考资料:
 {context}""",
-        'en': """You are a professional knowledge base assistant. Please answer the user's question based on the context provided below.
+        'en': """You are a professional knowledge base assistant.
 
 Answer Guidelines:
-1. Prioritize using information from the context to answer questions
-2. If the context contains information related to the question, even if it cannot fully answer the question, please provide relevant information and explain
-3. Only say you couldn't find relevant information when the context has absolutely nothing related
-4. Please respond in English
+1. Answer the user's question directly, do not start with "Based on the context" or similar phrases
+2. Use information from the reference materials below to answer
+3. If the reference materials contain related information, provide it even if it cannot fully answer the question
+4. Only say you couldn't find relevant information when the reference materials have absolutely nothing related
+5. Respond in English
 
-Context:
+Reference Materials:
 {context}""",
-        'ja': """あなたはプロフェッショナルなナレッジベースアシスタントです。以下に提供されたコンテキストに基づいてユーザーの質問に答えてください。
+        'ja': """あなたはプロフェッショナルなナレッジベースアシスタントです。
 
 回答ガイドライン：
-1. 質問に答えるためにコンテキスト内の情報を優先的に使用してください
-2. コンテキストに質問に関連する情報が含まれている場合、完全に回答できなくても関連情報を提供し、説明してください
-3. コンテキストに全く関連する情報がない場合のみ、関連情報が見つからなかったと述べてください
-4. 日本語で回答してください
+1. ユーザーの質問に直接答えてください。「提供されたコンテキストに基づいて」などの言葉で始めないでください
+2. 以下の参考資料の情報を使用して回答してください
+3. 参考資料に関連する情報が含まれている場合、完全に回答できなくても関連情報を提供してください
+4. 参考資料に全く関連する情報がない場合のみ、関連情報が見つからなかったと述べてください
+5. 日本語で回答してください
 
-コンテキスト:
+参考資料:
 {context}"""
     }
     

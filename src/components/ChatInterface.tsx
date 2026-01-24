@@ -682,6 +682,36 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     };
   }, []);
 
+  // 1.3.12: 监听语言切换，刷新对话框显示对应语言的内容
+  // 使用 ref 记录上一次的语言，避免首次渲染时触发刷新
+  const previousLangRef = useRef<string>(i18n.language);
+  useEffect(() => {
+    const currentLang = i18n.language;
+    
+    // 如果语言没有变化，跳过
+    if (previousLangRef.current === currentLang) {
+      return;
+    }
+    
+    // 更新语言记录
+    previousLangRef.current = currentLang;
+    
+    // 如果有知识库，刷新聊天配置
+    if (currentKb) {
+      // 重置配置加载标记，强制重新加载
+      configLoadedRef.current = null;
+      // 清空消息，开始新对话
+      clearMessages();
+      setCurrentConversationId(null);
+      // 重新加载配置
+      loadChatConfig(currentKb);
+      
+      if (import.meta.env.DEV) {
+        logger.log(`Language changed to ${currentLang}, refreshing chat interface`);
+      }
+    }
+  }, [i18n.language, currentKb, clearMessages, setCurrentConversationId, loadChatConfig]);
+
   // 1.2.23: 获取AI头像URL的辅助函数
   // 优先使用项目设置的头像，如果没有则返回null（使用默认图标）
   const getAvatarUrl = useCallback(() => {

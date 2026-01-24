@@ -1,10 +1,12 @@
 #!/bin/bash
-# 1.2.46: GCP Cloud Run 部署脚本 (优化版)
+# 1.3.10: GCP Cloud Run 部署脚本 (优化版)
 # 优化内容：
 # - 使用 Artifact Registry 替代已弃用的 gcr.io
 # - 1.2.46: 使用 Kaniko 构建器 + 层缓存加速构建
 # - 移除每次部署都执行的 API 启用（改为一次性初始化）
 # - 支持版本标签管理
+# - 1.3.10: 修复双 revision 问题 - 一次部署完成所有配置
+# - 1.3.10: 修复 SHORT_SHA substitution (改用 _SHORT_SHA)
 
 set -euo pipefail
 
@@ -21,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║         YUIChat 后端部署到 GCP Cloud Run (v1.3.9)          ║${NC}"
+echo -e "${BLUE}║         YUIChat 后端部署到 GCP Cloud Run (v1.3.10)         ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -87,12 +89,13 @@ gcloud config set project "${PROJECT_ID}" > /dev/null 2>&1
 # ============================================================================
 # 构建阶段 (使用 Cloud Build + 缓存)
 # ============================================================================
-echo -e "${CYAN}🏗️  [1/3] 构建 Docker 镜像 (使用缓存加速)...${NC}"
+echo -e "${CYAN}🏗️  [1/2] 构建 Docker 镜像 (使用缓存加速)...${NC}"
 BUILD_START=$(date +%s)
 
+# 1.3.10: 使用 _SHORT_SHA 替代 SHORT_SHA（Cloud Build 自定义变量必须以 _ 开头）
 gcloud builds submit \
     --config=cloudbuild.yaml \
-    --substitutions="_IMAGE=${IMAGE_BASE},_VERSION=${VERSION},SHORT_SHA=${SHORT_SHA}" \
+    --substitutions="_IMAGE=${IMAGE_BASE},_VERSION=${VERSION},_SHORT_SHA=${SHORT_SHA}" \
     --quiet
 
 BUILD_END=$(date +%s)
@@ -103,12 +106,20 @@ echo ""
 # ============================================================================
 # 部署阶段
 # ============================================================================
-echo -e "${CYAN}🚀 [2/3] 部署到 Cloud Run...${NC}"
+echo -e "${CYAN}🚀 [2/2] 部署到 Cloud Run...${NC}"
 DEPLOY_START=$(date +%s)
 
-# 1.3.9: 获取 Cloud Run 服务 URL（用于 Cloud Tasks 回调）
-# 首次部署时可能不存在，使用占位符
+# 1.3.10: 获取已有服务 URL（用于避免第二次 revision）
 EXISTING_SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format 'value(status.url)' 2>/dev/null || echo "")
+
+# 1.3.10: 构建环境变量 - 非首次部署时直接包含 CLOUD_RUN_SERVICE_URL
+ENV_VARS="ENV=production,USE_PGVECTOR=true,MAX_CHUNKS=4,RETRIEVE_K=8,CRAWL_TIMEOUT=30000,CRAWL_MAX_RETRIES=3,CRAWL_MAX_CONCURRENT=3,WAIT_NETWORK_IDLE=2000,GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},GCP_TASK_QUEUE=yuichat-tasks"
+
+# 如果已存在 URL，在同一次 deploy 中设置（避免第二个 revision）
+if [[ -n "${EXISTING_SERVICE_URL}" ]]; then
+    ENV_VARS="${ENV_VARS},CLOUD_RUN_SERVICE_URL=${EXISTING_SERVICE_URL}"
+    echo -e "${YELLOW}  📍 检测到已有服务 URL: ${EXISTING_SERVICE_URL}${NC}"
+fi
 
 gcloud run deploy "${SERVICE_NAME}" \
     --image "${IMAGE_BASE}:${SHORT_SHA}" \
@@ -120,7 +131,7 @@ gcloud run deploy "${SERVICE_NAME}" \
     --timeout 3600 \
     --max-instances 10 \
     --min-instances 0 \
-    --set-env-vars "ENV=production,USE_PGVECTOR=true,MAX_CHUNKS=4,RETRIEVE_K=8,CRAWL_TIMEOUT=30000,CRAWL_MAX_RETRIES=3,CRAWL_MAX_CONCURRENT=3,WAIT_NETWORK_IDLE=2000,GCP_PROJECT_ID=${PROJECT_ID},GCP_LOCATION=${REGION},GCP_TASK_QUEUE=yuichat-tasks" \
+    --set-env-vars "${ENV_VARS}" \
     --set-secrets "SUPABASE_URL=supabase-url:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest,OPENAI_API_KEY=openai-api-key:latest,PGVECTOR_DATABASE_URL=pgvector-database-url:latest" \
     --quiet
 
@@ -130,18 +141,21 @@ echo -e "${GREEN}  ✓ 部署完成 (耗时: ${DEPLOY_TIME}秒)${NC}"
 echo ""
 
 # ============================================================================
-# 获取服务信息并更新 Cloud Tasks 回调 URL
+# 获取服务信息
 # ============================================================================
-echo -e "${CYAN}📍 [3/4] 获取服务信息...${NC}"
 SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format 'value(status.url)')
 
-# 1.3.9: 更新 CLOUD_RUN_SERVICE_URL 环境变量（用于 Cloud Tasks 回调）
-echo -e "${CYAN}🔧 [4/4] 更新 Cloud Tasks 回调 URL...${NC}"
-gcloud run services update "${SERVICE_NAME}" \
-    --region "${REGION}" \
-    --update-env-vars "CLOUD_RUN_SERVICE_URL=${SERVICE_URL}" \
-    --quiet
-echo -e "${GREEN}  ✓ Cloud Tasks 回调 URL 已配置${NC}"
+# 1.3.10: 仅首次部署时需要补一次更新（之后每次都能在 deploy 时带上已有 URL）
+if [[ -z "${EXISTING_SERVICE_URL}" ]]; then
+    echo -e "${CYAN}🔧 首次部署: 更新 Cloud Tasks 回调 URL...${NC}"
+    gcloud run services update "${SERVICE_NAME}" \
+        --region "${REGION}" \
+        --update-env-vars "CLOUD_RUN_SERVICE_URL=${SERVICE_URL}" \
+        --quiet
+    echo -e "${GREEN}  ✓ Cloud Tasks 回调 URL 已配置${NC}"
+else
+    echo -e "${GREEN}  ✓ Cloud Tasks 回调 URL 已在部署时配置（单次 revision）${NC}"
+fi
 
 TOTAL_TIME=$((BUILD_TIME + DEPLOY_TIME))
 
