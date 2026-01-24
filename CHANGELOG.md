@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.3.11 (2026-01-24)
+
+### 新增引用来源展示功能
+
+- 🎯 **功能目标**：
+  - 在测试对话中展示AI回答的来源文档
+  - 右侧面板显示相关度最高的文档片段
+  - 参考 ChatMax 的引用来源展示方式
+
+### 核心改进
+
+1. **后端返回 Citations**：
+   - 修改 `workflow.py`，在检索文档时收集引用信息
+   - 返回格式：`{id, source, content, score}`
+   - 内容限制为500字符，只返回相关度最高的前5个
+
+2. **API 端点更新**：
+   - `/api/chat` 响应新增 `citations` 字段
+   - `/api/chat/stream` 流式响应新增 `citations` 字段
+
+3. **前端引用面板**：
+   - 新建 `CitationPanel.tsx` 右侧引用详情面板
+   - 在 AI 消息下方显示"引用来源: N"标签
+   - 点击标签展开右侧面板查看详情
+
+### 更新内容
+
+- 📄 **`backend_py/workflow.py`**：
+  - 修改 `chat_node()` 收集 citations 并返回
+  - 修改 `chat_node_stream()` 收集 citations 并返回
+  - `GraphState` 新增 `citations` 字段
+
+- 📄 **`backend_py/app.py`**：
+  - `/api/chat` 响应新增 `citations` 字段
+  - `/api/chat/stream` 响应新增 `citations` 字段
+
+- 📄 **`src/components/CitationPanel.tsx`**（新建）：
+  - 引用来源详情面板组件
+  - 支持展开/折叠每个引用项
+  - 显示来源URL和文档片段
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 集成 CitationPanel 组件
+  - 在 AI 消息下方显示引用标签
+  - 处理流式和非流式响应的 citations
+
+- 📄 **`src/types/chat.ts`**：
+  - 更新 `Citation` 接口以匹配后端返回格式
+
+---
+
 ## 1.3.10 (2026-01-24)
 
 ### 优化 Follow-up 推荐问题的相关性

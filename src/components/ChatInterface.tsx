@@ -14,17 +14,19 @@
  * 1.2.57: 修复公开模式加载卡住的问题，正确设置loadingDocuments状态，优化异步加载高频问题
  * 1.2.58: 修复生产环境每次点击测试对话不刷新聊天的问题，首次进入/chat时也需要清空消息
  * 1.3.0: 新增 follow_up 推荐问题显示功能，支持后续问题推荐
+ * 1.3.11: 新增引用来源展示功能，支持查看AI回答的文档来源
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams, useLocation } from 'react-router-dom'; // 1.2.2: 导入 useLocation 检测路由变化
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, Loader2, ExternalLink } from 'lucide-react';
+import { Send, Bot, User, Loader2, ExternalLink, FileText } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
 import type { ChatMessage, Citation } from '../types/chat';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ConversationHistorySidebar } from './ConversationHistorySidebar';
+import { CitationPanel } from './CitationPanel'; // 1.3.11: 引用来源面板
 import { logger } from '../utils/logger';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast'; // 1.1.15: 导入 toast 用于错误提示
@@ -97,6 +99,10 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
   const [loadingDocuments, setLoadingDocuments] = useState(true);
   // 1.3.0: follow_up 推荐问题状态
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  // 1.3.11: 引用来源面板状态
+  const [showCitationPanel, setShowCitationPanel] = useState(false);
+  const [selectedCitationId, setSelectedCitationId] = useState<string | undefined>(undefined);
+  const [currentCitations, setCurrentCitations] = useState<Citation[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const previousPathRef = useRef<string>(''); // 1.2.2: 记录上一个路由路径
@@ -824,11 +830,19 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       
       // 1.1.10: 更新消息内容
       // 1.2.14: 添加citations支持
+      // 1.3.11: 处理 citations 引用来源
+      const citations = data.citations || [];
       updateMessage(assistantMessageId, {
         content: data.answer || '抱歉，我无法回答这个问题。',
         status: 'completed',
-        citations: data.citations || [],
+        citations: citations,
       });
+      
+      // 1.3.11: 更新 citations 状态
+      setCurrentCitations(citations);
+      if (citations.length > 0) {
+        setShowCitationPanel(true);
+      }
 
       // 1.3.0: 处理 follow_up 推荐问题（非流式响应）
       if (data.follow_up && Array.isArray(data.follow_up)) {
@@ -1028,6 +1042,25 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
               if (parsed.done && parsed.answer) {
                 // 收到完整答案，保存上下文
                 fullContext = parsed.context || '';
+                
+                // 1.3.11: 处理 citations 引用来源
+                if (parsed.citations && Array.isArray(parsed.citations)) {
+                  const citations = parsed.citations as Citation[];
+                  setCurrentCitations(citations);
+                  // 更新消息的 citations
+                  updateMessage(assistantMessageId, {
+                    citations: citations,
+                  });
+                  // 如果有引用，自动显示引用面板
+                  if (citations.length > 0) {
+                    setShowCitationPanel(true);
+                  }
+                  if (import.meta.env.DEV) {
+                    logger.log('Received citations:', citations.length);
+                  }
+                } else {
+                  setCurrentCitations([]);
+                }
                 
                 // 1.3.0: 处理 follow_up 推荐问题
                 if (parsed.follow_up && Array.isArray(parsed.follow_up)) {
@@ -1430,6 +1463,21 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                   {message.role === 'assistant' ? (
                     <>
                       <MarkdownRenderer content={message.content} isStreaming={message.status === 'streaming'} />
+                      {/* 1.3.11: 引用来源标签 */}
+                      {message.citations && message.citations.length > 0 && message.status === 'completed' && (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <button
+                            onClick={() => {
+                              setCurrentCitations(message.citations || []);
+                              setShowCitationPanel(true);
+                            }}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary text-sm rounded-full hover:bg-primary/20 transition-colors"
+                          >
+                            <FileText className="w-4 h-4" />
+                            <span>{t('citationSources') || '引用来源'}: {message.citations.length}</span>
+                          </button>
+                        </div>
+                      )}
                       {message.status === 'error' && message.error && (
                         <div className="mt-2 flex flex-col gap-2">
                           <p className="text-red-600 text-sm">{message.error}</p>
@@ -1519,6 +1567,19 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
           </div>
         </div>
       </div>
+
+      {/* 1.3.11: 引用来源面板 */}
+      <AnimatePresence>
+        {showCitationPanel && currentCitations.length > 0 && (
+          <CitationPanel
+            citations={currentCitations}
+            isOpen={showCitationPanel}
+            onClose={() => setShowCitationPanel(false)}
+            selectedCitationId={selectedCitationId}
+            onSelectCitation={setSelectedCitationId}
+          />
+        )}
+      </AnimatePresence>
 
       {/* 1.2.16: 对话记录浮窗 */}
       {/* 1.2.25: 公开模式下不显示对话记录 */}

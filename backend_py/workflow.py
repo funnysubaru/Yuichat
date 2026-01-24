@@ -59,6 +59,7 @@ else:
 # 定义状态
 # 1.1.11: 添加URL爬虫相关字段
 # 1.2.52: 添加 language 字段，支持多语言回复
+# 1.3.11: 添加 citations 字段，支持引用来源展示
 class GraphState(TypedDict):
     file_path: str
     urls: List[str]  # 1.1.11: URL列表（可选）
@@ -69,6 +70,7 @@ class GraphState(TypedDict):
     context: str
     answer: str
     language: str  # 1.2.52: 语言设置（zh/en/ja）
+    citations: List[Dict[str, Any]]  # 1.3.11: 引用来源列表
 
 # 1.2.43: 从 URL 下载文件到临时目录
 def download_file_from_url(url: str) -> str:
@@ -468,6 +470,9 @@ def chat_node(state: GraphState):
     # 获取最后一条消息（用户问题）
     user_query = messages[-1].content
     
+    # 1.3.11: 初始化 citations 数组
+    citations = []
+    
     # 1.1.3: 根据配置选择向量数据库
     if USE_PGVECTOR and DATABASE_URL:
         # 使用 Supabase pgvector
@@ -479,34 +484,57 @@ def chat_node(state: GraphState):
             embeddings_model = OpenAIEmbeddings()
             query_vector = embeddings_model.embed_query(user_query)
             
-            # 1.2.39: 检索相似文档（vecs 0.4.5 API: data 替代 query_vector）
+            # 1.3.11: 检索相似文档，启用 include_value 获取相似度分数
+            # 1.3.10: 旧版本使用 include_value=False
             results = collection.query(
                 data=query_vector,
                 limit=MAX_CHUNKS,
-                include_value=False,
+                include_value=True,  # 1.3.11: 启用相似度分数
                 include_metadata=True
             )
             
-            # 1.2.39: 提取文本并过滤错误文档（vecs 返回格式: (id, metadata)）
+            # 1.3.11: 提取文本并收集 citations（vecs 返回格式: (id, score, metadata)）
+            # 1.3.10: 旧版本返回格式: (id, metadata)
             valid_texts = []
             for record in results:
-                if len(record) > 1 and record[1]:  # 确保有metadata
-                    text = record[1].get("text", "")
-                    metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
+                # 1.3.11: 根据 include_value 调整解析逻辑
+                if len(record) >= 3:
+                    record_id = record[0]
+                    score = record[1]
+                    metadata = record[2] if record[2] else {}
+                elif len(record) >= 2:
+                    record_id = record[0]
+                    score = None
+                    metadata = record[1] if record[1] else {}
+                else:
+                    continue
                     
-                    # 检查是否是错误文档
-                    is_error = (
-                        'error' in metadata or 
-                        '爬取失败' in text or 
-                        '解析失败' in text or
-                        text.strip().startswith('爬取失败') or
-                        text.strip().startswith('解析失败')
-                    )
-                    if not is_error and text.strip():
-                        valid_texts.append(text)
+                text = metadata.get("text", "")
+                source = metadata.get("source", metadata.get("url", ""))
+                inner_metadata = metadata.get("metadata", {}) if isinstance(metadata, dict) else {}
+                
+                # 检查是否是错误文档
+                is_error = (
+                    'error' in inner_metadata or 
+                    '爬取失败' in text or 
+                    '解析失败' in text or
+                    text.strip().startswith('爬取失败') or
+                    text.strip().startswith('解析失败')
+                )
+                if not is_error and text.strip():
+                    valid_texts.append(text)
+                    # 1.3.11: 收集 citation 信息（限制内容长度为500字符）
+                    citations.append({
+                        "id": record_id,
+                        "source": source,
+                        "content": text[:500] if len(text) > 500 else text,
+                        "score": float(score) if score is not None else None
+                    })
             
             # 1.2.12: 使用可配置的片段数量限制
             context = "\n\n".join(valid_texts[:MAX_CHUNKS])
+            # 1.3.11: 限制 citations 数量，只返回相关度最高的前5个
+            citations = citations[:5]
             
             # 1.1.11: 检查上下文是否为空
             if not context or not context.strip() or len(context.strip()) < 50:
@@ -527,7 +555,7 @@ def chat_node(state: GraphState):
             
             # 1.1.11: 过滤掉错误文档
             valid_docs = []
-            for doc in relevant_docs:
+            for idx, doc in enumerate(relevant_docs):
                 is_error = (
                     'error' in doc.metadata or 
                     '爬取失败' in doc.page_content or 
@@ -537,12 +565,23 @@ def chat_node(state: GraphState):
                 )
                 if not is_error:
                     valid_docs.append(doc)
+                    # 1.3.11: 收集 citation 信息（Chroma 回退时）
+                    source = doc.metadata.get('source', doc.metadata.get('url', ''))
+                    content = doc.page_content[:500] if len(doc.page_content) > 500 else doc.page_content
+                    citations.append({
+                        "id": f"chroma-fallback-{idx}",
+                        "source": source,
+                        "content": content,
+                        "score": None  # Chroma retriever 不返回分数
+                    })
             
             # 1.2.12: 使用可配置的片段数量限制
             if valid_docs:
                 relevant_docs = valid_docs[:MAX_CHUNKS]
             
             context = "\n\n".join([doc.page_content for doc in relevant_docs])
+            # 1.3.11: 限制 citations 数量
+            citations = citations[:5]
             
             # 1.1.11: 检查上下文是否为空
             if not context or not context.strip() or len(context.strip()) < 50:
@@ -561,7 +600,7 @@ def chat_node(state: GraphState):
         
         # 1.1.11: 过滤掉错误文档（包含"爬取失败"或"error"字段的文档）
         valid_docs = []
-        for doc in relevant_docs:
+        for idx, doc in enumerate(relevant_docs):
             # 检查是否是错误文档
             is_error = (
                 'error' in doc.metadata or 
@@ -572,12 +611,23 @@ def chat_node(state: GraphState):
             )
             if not is_error:
                 valid_docs.append(doc)
+                # 1.3.11: 收集 citation 信息（Chroma 本地模式）
+                source = doc.metadata.get('source', doc.metadata.get('url', ''))
+                content = doc.page_content[:500] if len(doc.page_content) > 500 else doc.page_content
+                citations.append({
+                    "id": f"chroma-{idx}",
+                    "source": source,
+                    "content": content,
+                    "score": None  # Chroma retriever 不返回分数
+                })
         
         # 1.2.12: 如果过滤后还有文档，使用过滤后的；否则使用原始的（至少返回一些内容）
         original_count = len(relevant_docs)
         if valid_docs:
             # 1.2.12: 使用可配置的片段数量限制
             relevant_docs = valid_docs[:MAX_CHUNKS]
+            # 1.3.11: 限制 citations 数量
+            citations = citations[:5]
             if os.getenv("ENV") == "development":
                 print(f"🔍 检索到 {len(valid_docs)} 个有效文档（已过滤 {original_count - len(valid_docs)} 个错误文档）")
         else:
@@ -612,10 +662,12 @@ def chat_node(state: GraphState):
         if os.getenv("ENV") == "development":
             print("⚠️ 警告: 上下文为空或过短，可能没有找到相关文档")
         # 返回一个友好的提示（1.2.52: 根据语言返回）
+        # 1.3.11: 添加 citations 字段
         return {
             "answer": empty_context_messages.get(language, empty_context_messages['zh']),
             "messages": messages,
-            "context": ""
+            "context": "",
+            "citations": []  # 1.3.11: 空上下文时无引用
         }
     
     # 1.2.52: 多语言系统提示词
@@ -637,7 +689,13 @@ def chat_node(state: GraphState):
     
     response = chain.invoke({"context": context, "messages": messages})
     
-    return {"answer": response.content, "messages": messages + [response]}
+    # 1.3.11: 添加 citations 字段到返回值
+    return {
+        "answer": response.content,
+        "messages": messages + [response],
+        "context": context,
+        "citations": citations  # 1.3.11: 引用来源列表
+    }
 
 # 1.2.24: 流式版本的 chat_node，用于支持 SSE 流式输出
 async def chat_node_stream(state: GraphState):
@@ -672,6 +730,9 @@ async def chat_node_stream(state: GraphState):
     # 获取最后一条消息（用户问题）
     user_query = messages[-1].content
     
+    # 1.3.11: 初始化 citations 数组
+    citations = []
+    
     # 1.2.24: 向量检索（与 chat_node 相同的逻辑）
     context = ""
     if USE_PGVECTOR and DATABASE_URL:
@@ -684,33 +745,53 @@ async def chat_node_stream(state: GraphState):
             embeddings_model = OpenAIEmbeddings()
             query_vector = embeddings_model.embed_query(user_query)
             
-            # 1.2.39: 检索相似文档（vecs 0.4.5 API: data 替代 query_vector）
+            # 1.3.11: 检索相似文档，启用 include_value 获取相似度分数
             results = collection.query(
                 data=query_vector,
                 limit=MAX_CHUNKS,
-                include_value=False,
+                include_value=True,  # 1.3.11: 启用相似度分数
                 include_metadata=True
             )
             
-            # 提取文本并过滤错误文档
+            # 1.3.11: 提取文本并收集 citations
             valid_texts = []
             for record in results:
-                # 1.2.39: vecs 返回格式: (id, metadata)
-                if len(record) > 1 and record[1]:
-                    text = record[1].get("text", "")
-                    metadata = record[1].get("metadata", {}) if isinstance(record[1], dict) else {}
+                # 1.3.11: 根据 include_value 调整解析逻辑
+                if len(record) >= 3:
+                    record_id = record[0]
+                    score = record[1]
+                    metadata = record[2] if record[2] else {}
+                elif len(record) >= 2:
+                    record_id = record[0]
+                    score = None
+                    metadata = record[1] if record[1] else {}
+                else:
+                    continue
                     
-                    is_error = (
-                        'error' in metadata or 
-                        '爬取失败' in text or 
-                        '解析失败' in text or
-                        text.strip().startswith('爬取失败') or
-                        text.strip().startswith('解析失败')
-                    )
-                    if not is_error and text.strip():
-                        valid_texts.append(text)
+                text = metadata.get("text", "")
+                source = metadata.get("source", metadata.get("url", ""))
+                inner_metadata = metadata.get("metadata", {}) if isinstance(metadata, dict) else {}
+                
+                is_error = (
+                    'error' in inner_metadata or 
+                    '爬取失败' in text or 
+                    '解析失败' in text or
+                    text.strip().startswith('爬取失败') or
+                    text.strip().startswith('解析失败')
+                )
+                if not is_error and text.strip():
+                    valid_texts.append(text)
+                    # 1.3.11: 收集 citation 信息（限制内容长度为500字符）
+                    citations.append({
+                        "id": record_id,
+                        "source": source,
+                        "content": text[:500] if len(text) > 500 else text,
+                        "score": float(score) if score is not None else None
+                    })
             
             context = "\n\n".join(valid_texts[:MAX_CHUNKS])
+            # 1.3.11: 限制 citations 数量
+            citations = citations[:5]
             
             if not context or not context.strip() or len(context.strip()) < 50:
                 if os.getenv("ENV") == "development":
@@ -728,7 +809,7 @@ async def chat_node_stream(state: GraphState):
             relevant_docs = retriever.invoke(user_query)
             
             valid_docs = []
-            for doc in relevant_docs:
+            for idx, doc in enumerate(relevant_docs):
                 is_error = (
                     'error' in doc.metadata or 
                     '爬取失败' in doc.page_content or 
@@ -738,11 +819,22 @@ async def chat_node_stream(state: GraphState):
                 )
                 if not is_error:
                     valid_docs.append(doc)
+                    # 1.3.11: 收集 citation 信息（Chroma 回退时）
+                    source = doc.metadata.get('source', doc.metadata.get('url', ''))
+                    content = doc.page_content[:500] if len(doc.page_content) > 500 else doc.page_content
+                    citations.append({
+                        "id": f"chroma-stream-fallback-{idx}",
+                        "source": source,
+                        "content": content,
+                        "score": None
+                    })
             
             if valid_docs:
                 relevant_docs = valid_docs[:MAX_CHUNKS]
             
             context = "\n\n".join([doc.page_content for doc in relevant_docs])
+            # 1.3.11: 限制 citations 数量
+            citations = citations[:5]
     else:
         # 使用 Chroma（本地开发）
         # 1.2.56: Chroma 已在条件导入块中导入
@@ -754,7 +846,7 @@ async def chat_node_stream(state: GraphState):
         relevant_docs = retriever.invoke(user_query)
         
         valid_docs = []
-        for doc in relevant_docs:
+        for idx, doc in enumerate(relevant_docs):
             is_error = (
                 'error' in doc.metadata or 
                 '爬取失败' in doc.page_content or 
@@ -764,10 +856,21 @@ async def chat_node_stream(state: GraphState):
             )
             if not is_error:
                 valid_docs.append(doc)
+                # 1.3.11: 收集 citation 信息（Chroma 本地模式）
+                source = doc.metadata.get('source', doc.metadata.get('url', ''))
+                content = doc.page_content[:500] if len(doc.page_content) > 500 else doc.page_content
+                citations.append({
+                    "id": f"chroma-stream-{idx}",
+                    "source": source,
+                    "content": content,
+                    "score": None
+                })
         
         original_count = len(relevant_docs)
         if valid_docs:
             relevant_docs = valid_docs[:MAX_CHUNKS]
+            # 1.3.11: 限制 citations 数量
+            citations = citations[:5]
             if os.getenv("ENV") == "development":
                 print(f"🔍 检索到 {len(valid_docs)} 个有效文档（已过滤 {original_count - len(valid_docs)} 个错误文档）")
         else:
@@ -790,13 +893,15 @@ async def chat_node_stream(state: GraphState):
     }
     
     # 1.2.24: 如果上下文为空，返回友好提示
+    # 1.3.11: 添加 citations 字段
     if not context or not context.strip() or len(context.strip()) < 50:
         if os.getenv("ENV") == "development":
             print("⚠️ 警告: 上下文为空或过短，可能没有找到相关文档")
         yield {
             "answer": empty_context_messages.get(language, empty_context_messages['zh']),
             "done": True,
-            "context": ""
+            "context": "",
+            "citations": []  # 1.3.11: 空上下文时无引用
         }
         return
     
@@ -829,10 +934,12 @@ async def chat_node_stream(state: GraphState):
             }
     
     # 1.2.24: 发送完成标记，包含完整答案和上下文
+    # 1.3.11: 添加 citations 字段
     yield {
         "answer": full_response,
         "context": context,
-        "done": True
+        "done": True,
+        "citations": citations  # 1.3.11: 引用来源列表
     }
 
 # 1.1.11: 入口节点 - 根据输入类型路由到不同处理节点

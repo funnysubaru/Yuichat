@@ -764,6 +764,8 @@ async def chat(request: Request):
         
         answer = result.get("answer", "抱歉，我无法回答这个问题。")
         context = result.get("context", "")
+        # 1.3.11: 获取 citations 引用来源
+        citations = result.get("citations", [])
         
         # 1.3.0: 获取 follow-up 推荐问题
         follow_up_questions = []
@@ -780,11 +782,13 @@ async def chat(request: Request):
             # 获取推荐问题失败不影响主响应
             logger.warning(f"Failed to get follow-up questions: {fq_error}")
         
+        # 1.3.11: 添加 citations 到响应
         return JSONResponse(content={
             "status": "success",
             "answer": answer,
             "context": context,
             "collection_name": collection_name,
+            "citations": citations,  # 1.3.11: 引用来源列表
             "follow_up": [{"content": q} for q in follow_up_questions]  # 1.3.0: 新增
         })
     except Exception as e:
@@ -912,9 +916,11 @@ async def chat_stream(request: Request):
                             logger.warning(f"Failed to get follow-up questions in stream: {fq_error}")
                         
                         # 发送完成消息，包含完整答案、上下文和 follow-up 问题
+                        # 1.3.11: 添加 citations 引用来源
                         done_data = {
                             'answer': chunk_data.get('answer', ''),
                             'context': chunk_data.get('context', ''),
+                            'citations': chunk_data.get('citations', []),  # 1.3.11: 引用来源列表
                             'follow_up': [{"content": q} for q in follow_up_questions],  # 1.3.0: 新增
                             'done': True
                         }
