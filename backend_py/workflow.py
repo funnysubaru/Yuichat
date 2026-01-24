@@ -671,10 +671,38 @@ def chat_node(state: GraphState):
         }
     
     # 1.2.52: 多语言系统提示词
+    # 1.3.11: 优化提示词，让AI更好地利用上下文中的相关信息
     system_prompts = {
-        'zh': "你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。如果上下文中没有相关信息，请诚实地说你不知道。请使用中文回复。\n\n上下文:\n{context}",
-        'en': "You are a professional knowledge base assistant. Please answer the user's question based on the context provided below. If there is no relevant information in the context, please honestly say you don't know. Please respond in English.\n\nContext:\n{context}",
-        'ja': "あなたはプロフェッショナルなナレッジベースアシスタントです。以下に提供されたコンテキストに基づいてユーザーの質問に答えてください。コンテキストに関連情報がない場合は、正直にわからないと言ってください。日本語で回答してください。\n\nコンテキスト:\n{context}"
+        'zh': """你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。
+
+回答指南：
+1. 优先使用上下文中的信息来回答问题
+2. 如果上下文包含与问题相关的信息，即使不能完全回答问题，也请提供相关的信息并说明
+3. 只有当上下文完全没有任何相关信息时，才说你在知识库中没有找到相关信息
+4. 请使用中文回复
+
+上下文:
+{context}""",
+        'en': """You are a professional knowledge base assistant. Please answer the user's question based on the context provided below.
+
+Answer Guidelines:
+1. Prioritize using information from the context to answer questions
+2. If the context contains information related to the question, even if it cannot fully answer the question, please provide relevant information and explain
+3. Only say you couldn't find relevant information when the context has absolutely nothing related
+4. Please respond in English
+
+Context:
+{context}""",
+        'ja': """あなたはプロフェッショナルなナレッジベースアシスタントです。以下に提供されたコンテキストに基づいてユーザーの質問に答えてください。
+
+回答ガイドライン：
+1. 質問に答えるためにコンテキスト内の情報を優先的に使用してください
+2. コンテキストに質問に関連する情報が含まれている場合、完全に回答できなくても関連情報を提供し、説明してください
+3. コンテキストに全く関連する情報がない場合のみ、関連情報が見つからなかったと述べてください
+4. 日本語で回答してください
+
+コンテキスト:
+{context}"""
     }
     
     # 生成回答
@@ -906,10 +934,38 @@ async def chat_node_stream(state: GraphState):
         return
     
     # 1.2.52: 多语言系统提示词
+    # 1.3.11: 优化提示词，让AI更好地利用上下文中的相关信息
     system_prompts = {
-        'zh': "你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。如果上下文中没有相关信息，请诚实地说你不知道。请使用中文回复。\n\n上下文:\n{context}",
-        'en': "You are a professional knowledge base assistant. Please answer the user's question based on the context provided below. If there is no relevant information in the context, please honestly say you don't know. Please respond in English.\n\nContext:\n{context}",
-        'ja': "あなたはプロフェッショナルなナレッジベースアシスタントです。以下に提供されたコンテキストに基づいてユーザーの質問に答えてください。コンテキストに関連情報がない場合は、正直にわからないと言ってください。日本語で回答してください。\n\nコンテキスト:\n{context}"
+        'zh': """你是一个专业的知识库助手。请根据以下提供的上下文回答用户的问题。
+
+回答指南：
+1. 优先使用上下文中的信息来回答问题
+2. 如果上下文包含与问题相关的信息，即使不能完全回答问题，也请提供相关的信息并说明
+3. 只有当上下文完全没有任何相关信息时，才说你在知识库中没有找到相关信息
+4. 请使用中文回复
+
+上下文:
+{context}""",
+        'en': """You are a professional knowledge base assistant. Please answer the user's question based on the context provided below.
+
+Answer Guidelines:
+1. Prioritize using information from the context to answer questions
+2. If the context contains information related to the question, even if it cannot fully answer the question, please provide relevant information and explain
+3. Only say you couldn't find relevant information when the context has absolutely nothing related
+4. Please respond in English
+
+Context:
+{context}""",
+        'ja': """あなたはプロフェッショナルなナレッジベースアシスタントです。以下に提供されたコンテキストに基づいてユーザーの質問に答えてください。
+
+回答ガイドライン：
+1. 質問に答えるためにコンテキスト内の情報を優先的に使用してください
+2. コンテキストに質問に関連する情報が含まれている場合、完全に回答できなくても関連情報を提供し、説明してください
+3. コンテキストに全く関連する情報がない場合のみ、関連情報が見つからなかったと述べてください
+4. 日本語で回答してください
+
+コンテキスト:
+{context}"""
     }
     
     # 1.2.24: 生成流式回答
