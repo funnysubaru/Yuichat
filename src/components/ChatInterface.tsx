@@ -1574,7 +1574,10 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
           <CitationPanel
             citations={currentCitations}
             isOpen={showCitationPanel}
-            onClose={() => setShowCitationPanel(false)}
+            onClose={() => {
+              setShowCitationPanel(false);
+              setSelectedCitationId(undefined); // 1.3.11: 关闭时清除选中状态
+            }}
             selectedCitationId={selectedCitationId}
             onSelectCitation={setSelectedCitationId}
           />

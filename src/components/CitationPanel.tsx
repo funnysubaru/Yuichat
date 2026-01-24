@@ -62,7 +62,8 @@ function CitationItem({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const [isExpanded, setIsExpanded] = useState(isSelected);
+  // 1.3.11: 初始状态为折叠，每次打开面板时都从折叠状态开始
+  const [isExpanded, setIsExpanded] = useState(false);
   const { t } = useTranslation();
   
   const displayName = getSourceDisplayName(citation.source);
