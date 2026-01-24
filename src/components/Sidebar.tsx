@@ -168,12 +168,14 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
   };
   
   // 1.0.2: 所有菜单项使用多语言
+  // 1.3.14: 添加对话数据菜单项
   const projectMenuItems = [
     { icon: BookOpen, label: t('knowledgeBase'), path: '/knowledge-base', id: 'knowledge-base' },
     { icon: Settings, label: t('projectSettings'), path: '/settings', id: 'settings' },
     { icon: MessageSquare, label: t('testChat'), path: '/chat', id: 'chat' },
     { icon: Share2, label: t('externalShare'), path: '/share', id: 'share' },
     { icon: BarChart3, label: t('dashboard'), path: '/dashboard', id: 'dashboard' },
+    { icon: MessageSquareMore, label: t('conversationData'), path: '/conversation-data', id: 'conversation-data' },
   ];
   
   // 1.1.14: 切换项目
@@ -185,9 +187,9 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
 
   // 1.0.1: 删除技能中心、创作中心、权益、API 菜单项
   // 1.0.2: 使用多语言
+  // 1.3.14: 移除对话数据菜单项（已移到项目菜单中）
   const accountMenuItems = [
     { icon: FolderOpen, label: t('allProjects'), path: '/', id: 'projects' },
-    { icon: MessageSquareMore, label: t('conversationData'), path: '/conversations', id: 'conversations' },
   ];
 
   const isActive = (path: string) => {

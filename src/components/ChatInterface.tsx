@@ -32,11 +32,14 @@ import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast'; // 1.1.15: 导入 toast 用于错误提示
 import {
   createConversation,
+  createPublicConversation,
   saveMessage,
   updateConversationTitle,
   addConversation,
+  getOrCreateSessionId,
 } from '../services/conversationService';
 import { getCurrentUser } from '../services/authService';
+import { getConversationSettings } from '../services/statsService';
 
 // 1.2.23: AI头像组件
 interface AvatarProps {
@@ -953,25 +956,46 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     setFollowUpQuestions([]); // 1.3.0: 清空之前的 follow_up 问题
 
     // 1.2.13: 如果没有对话，创建新对话
-    // 1.2.25: 公开模式下不需要创建对话记录
-    if (!isPublicMode && !currentConversationId && messages.length === 0) {
+    // 1.3.14: 公开模式下也创建对话记录（使用 session_id 标识用户）
+    if (!currentConversationId && messages.length === 0) {
       try {
-        const user = await getCurrentUser();
-        if (!user) {
-          toast.error('请先登录');
+        const title = chatConfig?.welcomeMessage?.substring(0, 50) || '新对话';
+        
+        if (isPublicMode) {
+          // 1.3.14: 公开模式 - 使用 session_id 创建对话
+          const sessionId = getOrCreateSessionId();
+          // 获取保存周期设置
+          const settings = await getConversationSettings(currentKb.id);
+          const conversation = await createPublicConversation(
+            currentKb.id, 
+            sessionId, 
+            title,
+            settings?.retentionPeriod
+          );
+          setCurrentConversationId(conversation.id);
+          if (import.meta.env.DEV) {
+            logger.log('Public conversation created:', conversation.id);
+          }
+        } else {
+          // 测试模式 - 需要用户登录
+          const user = await getCurrentUser();
+          if (!user) {
+            toast.error('请先登录');
+            setIsTyping(false);
+            return;
+          }
+          const conversation = await createConversation(currentKb.id, user.id, title);
+          addConversation(conversation);
+          setCurrentConversationId(conversation.id);
+        }
+      } catch (error) {
+        logger.error('Error creating conversation:', error);
+        // 1.3.14: 公开模式下创建对话失败不阻止聊天
+        if (!isPublicMode) {
+          toast.error('创建对话失败');
           setIsTyping(false);
           return;
         }
-
-        const title = chatConfig?.welcomeMessage?.substring(0, 50) || '新对话';
-        const conversation = await createConversation(currentKb.id, user.id, title);
-        addConversation(conversation);
-        setCurrentConversationId(conversation.id);
-      } catch (error) {
-        logger.error('Error creating conversation:', error);
-        toast.error('创建对话失败');
-        setIsTyping(false);
-        return;
       }
     }
 
@@ -1212,11 +1236,11 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
 
   // 1.2.13: 自动保存消息到数据库
   // 1.2.14: 修复标题更新逻辑，防止重复保存
-  // 1.2.25: 公开模式下不保存消息
   // 1.3.1: 彻底修复消息重复保存问题
+  // 1.3.14: 公开模式也支持保存消息到数据库
   const saveMessageToDb = useCallback(
     async (message: ChatMessage, allMessages: ChatMessage[]) => {
-      if (isPublicMode || !currentConversationId || !currentKb) return;
+      if (!currentConversationId || !currentKb) return;
 
       // 1.3.1: 检查消息是否来自数据库（UUID格式）
       // 从数据库加载的消息ID是UUID格式，新创建的消息ID以 'msg-' 开头
@@ -1247,10 +1271,13 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       savingMessageIdRef.current = message.id;
 
       try {
-        const user = await getCurrentUser();
-        if (!user) {
-          savingMessageIdRef.current = null;
-          return;
+        // 1.3.14: 公开模式不需要用户验证
+        if (!isPublicMode) {
+          const user = await getCurrentUser();
+          if (!user) {
+            savingMessageIdRef.current = null;
+            return;
+          }
         }
 
         // 1.2.13: 保存消息到数据库

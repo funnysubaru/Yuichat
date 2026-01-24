@@ -2,6 +2,7 @@
  * 1.0.0: YUIChat 项目 - 主应用组件
  * ChatMax 风格布局
  * 1.1.5: 添加认证页面，未登录显示登录页
+ * 1.3.14: 添加对话数据页面路由
  */
 
 import { useState, useEffect } from 'react';
@@ -16,6 +17,7 @@ import { SharePage } from './pages/SharePage';
 import { PublicChatPage } from './pages/PublicChatPage'; // 1.2.24: 公开聊天页面
 import { SettingsPage } from './pages/SettingsPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ConversationDataPage } from './pages/ConversationDataPage'; // 1.3.14: 对话数据页面
 import { AuthPage } from './pages/AuthPage';
 import { AccountCenterPage } from './pages/AccountCenterPage'; // 1.2.29: 账号中心
 import { FeedbackPage } from './pages/FeedbackPage'; // 1.2.29: 意见反馈
@@ -120,6 +122,7 @@ function App() {
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/share" element={<SharePage />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/conversation-data" element={<ConversationDataPage />} />
                     <Route path="/account" element={<AccountCenterPage />} />
                     <Route path="/feedback" element={<FeedbackPage />} />
                   </Routes>
