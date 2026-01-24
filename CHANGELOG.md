@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.3.10 (2026-01-24)
+
+### 优化 Follow-up 推荐问题的相关性
+
+- 🎯 **优化目标**：
+  - 解决 follow-up 推荐问题与用户提问相关性不高的问题
+  - 参考 ChatMax 的实现方式进行优化
+
+### 核心改进
+
+1. **提高相似度阈值**：
+   - 从 0.7 提高到 0.85
+   - 更严格的筛选，只返回高度相关的问题
+
+2. **二次 Cosine Similarity 验证**：
+   - 对检索结果进行二次验证
+   - 用原始用户查询的 embedding 重新计算相似度
+   - 只保留验证分数 > 0.85 的问题
+
+3. **查询扩展**：
+   - 新增 `query_expander.py` 模块
+   - 同义词扩展：生成 2-3 个同义表达
+   - 语义扩展：生成 2 个相关问题
+   - 提高检索召回率
+
+### 更新内容
+
+- 📄 **`backend_py/query_expander.py`**（新建）：
+  - `expand_query()` - 综合查询扩展入口
+  - `generate_synonyms()` - 同义词/同义表达生成
+  - `generate_related_queries()` - LLM 语义相关问题生成
+
+- 📄 **`backend_py/question_retriever.py`**：
+  - 提高 `SIMILARITY_THRESHOLD` 从 0.7 到 0.85
+  - 新增 `COSINE_SIMILARITY_THRESHOLD` 配置
+  - 新增 `cosine_similarity()` 函数
+  - 修改 `retrieve_similar_questions()` 支持返回查询 embedding
+  - 修改 `filter_follow_up_questions()` 增加二次验证参数
+  - 修改 `get_recommended_questions()` 集成查询扩展和二次验证
+
+### 新增环境变量
+
+```bash
+# .env.local 可选配置
+QUESTION_SIMILARITY_THRESHOLD=0.85     # 初次筛选阈值（默认 0.85）
+COSINE_SIMILARITY_THRESHOLD=0.85       # 二次验证阈值（默认 0.85）
+QUERY_EXPANSION_ENABLED=true           # 启用查询扩展（默认 true）
+QUERY_EXPANSION_LLM_MODEL=gpt-4o-mini  # 扩展用的 LLM 模型
+MAX_EXPANDED_QUERIES=5                 # 最大扩展查询数
+```
+
+---
+
 ## 1.3.9 (2026-01-24)
 
 ### 移除知识库页面右上角的系统loading提示
