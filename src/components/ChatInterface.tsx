@@ -68,6 +68,26 @@ function Avatar({ avatarUrl, size = 'md' }: AvatarProps) {
   );
 }
 
+/**
+ * 1.3.11: 检测AI回答是否表示"没有找到相关信息"
+ * 当AI表示没有找到相关信息时，不应该显示引用来源
+ */
+function isNoContextAnswer(content: string): boolean {
+  if (!content) return false;
+  const noContextPatterns = [
+    // 中文
+    '对不起', '抱歉', '没有找到', '没有提到', '没有相关', '无法找到', '找不到',
+    '没有包含', '未提及', '未找到', '没有涉及', '没有提供',
+    // 日语
+    '申し訳', 'ございません', '見つかりません', '含まれていません', '関連情報がありません',
+    // 英语
+    'sorry', 'apologize', 'not found', 'no relevant', 'cannot find', "don't have",
+    'no information', 'not mentioned', 'not provided'
+  ];
+  const lowerContent = content.toLowerCase();
+  return noContextPatterns.some(pattern => lowerContent.includes(pattern.toLowerCase()));
+}
+
 interface ChatInterfaceProps {
   language?: string;
   onScroll?: (scrollTop: number) => void;
@@ -832,15 +852,16 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       // 1.2.14: 添加citations支持
       // 1.3.11: 处理 citations 引用来源
       const citations = data.citations || [];
+      const answerContent = data.answer || '抱歉，我无法回答这个问题。';
       updateMessage(assistantMessageId, {
-        content: data.answer || '抱歉，我无法回答这个问题。',
+        content: answerContent,
         status: 'completed',
         citations: citations,
       });
       
-      // 1.3.11: 更新 citations 状态
+      // 1.3.11: 更新 citations 状态，当AI表示没有找到相关信息时不显示引用面板
       setCurrentCitations(citations);
-      if (citations.length > 0) {
+      if (citations.length > 0 && !isNoContextAnswer(answerContent)) {
         setShowCitationPanel(true);
       }
 
@@ -1042,6 +1063,7 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
               if (parsed.done && parsed.answer) {
                 // 收到完整答案，保存上下文
                 fullContext = parsed.context || '';
+                const fullAnswer = parsed.answer || '';
                 
                 // 1.3.11: 处理 citations 引用来源
                 if (parsed.citations && Array.isArray(parsed.citations)) {
@@ -1051,8 +1073,8 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                   updateMessage(assistantMessageId, {
                     citations: citations,
                   });
-                  // 如果有引用，自动显示引用面板
-                  if (citations.length > 0) {
+                  // 1.3.11: 如果有引用且AI没有表示没有找到相关信息，自动显示引用面板
+                  if (citations.length > 0 && !isNoContextAnswer(fullAnswer)) {
                     setShowCitationPanel(true);
                   }
                   if (import.meta.env.DEV) {
@@ -1463,8 +1485,8 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                   {message.role === 'assistant' ? (
                     <>
                       <MarkdownRenderer content={message.content} isStreaming={message.status === 'streaming'} />
-                      {/* 1.3.11: 引用来源标签 */}
-                      {message.citations && message.citations.length > 0 && message.status === 'completed' && (
+                      {/* 1.3.11: 引用来源标签 - 当AI表示没有找到相关信息时不显示 */}
+                      {message.citations && message.citations.length > 0 && message.status === 'completed' && !isNoContextAnswer(message.content) && (
                         <div className="mt-3 pt-3 border-t border-gray-200">
                           <button
                             onClick={() => {
