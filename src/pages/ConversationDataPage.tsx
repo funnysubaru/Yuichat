@@ -204,8 +204,8 @@ export function ConversationDataPage() {
 
   // 获取来源类型标签
   const getSourceTypeLabel = (type: SourceType | undefined) => {
-    if (type === 'test') return t('testLabel');
-    if (type === 'public') return t('publicLabel');
+    if (type === 'test') return t('testConversationLabel');
+    if (type === 'public') return t('realConversationLabel');
     return '-';
   };
 
