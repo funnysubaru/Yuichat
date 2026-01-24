@@ -307,6 +307,12 @@ const resources = {
       // 1.3.0: follow_up 推荐问题
       followUpQuestions: '您可能还想问：',
       
+      // 1.3.11: 引用来源展示
+      citationSources: '引用来源',
+      relevanceScore: '相关度',
+      viewSource: '查看来源',
+      citationNote: '显示相关度最高的文档片段',
+      
       // 1.3.7: 知识库Banner 4步流程
       bannerTitle4Steps: '4步快速创建知识库',
       bannerSubtitle4Steps: '上传文件，网站URL',
@@ -610,6 +616,12 @@ const resources = {
       // 1.3.0: follow_up 推奨質問
       followUpQuestions: '他にもこんな質問ができます：',
       
+      // 1.3.11: 引用ソース表示
+      citationSources: '引用ソース',
+      relevanceScore: '関連度',
+      viewSource: 'ソースを表示',
+      citationNote: '最も関連性の高いドキュメント断片を表示',
+      
       // 1.3.7: ナレッジベースBanner 4ステップフロー
       bannerTitle4Steps: '4ステップでナレッジベースを作成',
       bannerSubtitle4Steps: 'ファイル、ウェブサイトURLをアップロード',
@@ -912,6 +924,12 @@ const resources = {
       
       // 1.3.0: follow_up recommended questions
       followUpQuestions: 'You might also want to ask:',
+      
+      // 1.3.11: Citation sources display
+      citationSources: 'Citation Sources',
+      relevanceScore: 'Relevance',
+      viewSource: 'View Source',
+      citationNote: 'Showing the most relevant document snippets',
       
       // 1.3.7: Knowledge Base Banner 4-step flow
       bannerTitle4Steps: '4 Steps to Create Knowledge Base',
