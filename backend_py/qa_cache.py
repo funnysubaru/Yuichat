@@ -39,9 +39,14 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 # 缓存配置
+# 1.3.15: 商用场景优化 - 延长缓存有效期以提升用户体验
 QA_CACHE_ENABLED = os.getenv("QA_CACHE_ENABLED", "true").lower() == "true"
 QA_CACHE_SIMILARITY_THRESHOLD = float(os.getenv("QA_CACHE_SIMILARITY_THRESHOLD", "0.95"))
-QA_CACHE_TTL_HOURS = int(os.getenv("QA_CACHE_TTL_HOURS", "24"))
+# 1.3.15: 默认 7 天（168小时），商用场景建议 7-30 天
+QA_CACHE_TTL_HOURS = int(os.getenv("QA_CACHE_TTL_HOURS", "168"))
+# 1.3.15: 热门问题 TTL 延长倍数（命中次数 >= HOT_THRESHOLD 时自动延长）
+QA_CACHE_HOT_THRESHOLD = int(os.getenv("QA_CACHE_HOT_THRESHOLD", "5"))  # 命中5次视为热门
+QA_CACHE_HOT_TTL_MULTIPLIER = float(os.getenv("QA_CACHE_HOT_TTL_MULTIPLIER", "4"))  # 热门问题 TTL x4
 
 # 初始化 Supabase 客户端
 supabase: Optional[Client] = None
@@ -157,10 +162,48 @@ async def check_cache(
 
 
 async def _update_hit_count(cache_id: str) -> None:
-    """异步更新缓存命中计数"""
+    """
+    1.3.15: 异步更新缓存命中计数，并检查是否需要延长热门问题的 TTL
+    
+    热门问题策略：
+    - 当命中次数达到 HOT_THRESHOLD 时，自动延长 TTL
+    - 延长倍数由 HOT_TTL_MULTIPLIER 控制（默认 4 倍）
+    """
     try:
-        if supabase:
-            supabase.rpc('update_qa_cache_hit', {'cache_id': cache_id}).execute()
+        if not supabase:
+            return
+        
+        # 更新命中计数
+        supabase.rpc('update_qa_cache_hit', {'cache_id': cache_id}).execute()
+        
+        # 1.3.15: 检查是否需要延长热门问题的 TTL
+        # 查询当前命中次数
+        result = supabase.table("qa_cache")\
+            .select("hit_count, expires_at, created_at")\
+            .eq("id", cache_id)\
+            .single()\
+            .execute()
+        
+        if result.data:
+            hit_count = result.data.get("hit_count", 0)
+            
+            # 如果达到热门阈值，延长 TTL
+            if hit_count >= QA_CACHE_HOT_THRESHOLD:
+                from datetime import datetime, timedelta
+                
+                # 计算新的过期时间（从现在开始延长）
+                new_ttl_hours = int(QA_CACHE_TTL_HOURS * QA_CACHE_HOT_TTL_MULTIPLIER)
+                new_expires_at = (datetime.utcnow() + timedelta(hours=new_ttl_hours)).isoformat()
+                
+                # 更新过期时间
+                supabase.table("qa_cache")\
+                    .update({"expires_at": new_expires_at})\
+                    .eq("id", cache_id)\
+                    .execute()
+                
+                if os.getenv("ENV") == "development":
+                    logger.info(f"Extended TTL for hot question (hits={hit_count}): cache_id={cache_id[:8]}..., new_ttl={new_ttl_hours}h")
+                    
     except Exception as e:
         logger.warning(f"Failed to update cache hit count: {e}")
 
