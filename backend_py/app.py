@@ -144,6 +144,109 @@ async def generate_questions_endpoint(request: Request):
         )
 
 
+# 1.3.16: 翻译 API 端点 - 用于自动填充多语言欢迎语和推荐问题
+@fastapi_app.post("/api/translate")
+async def translate_text(request: Request):
+    """
+    1.3.16: 翻译 API 端点
+    将输入文本翻译成目标语言
+    
+    请求体:
+    {
+        "text": "要翻译的文本",
+        "source_lang": "源语言 (zh/en/ja)",
+        "target_langs": ["目标语言列表"]
+    }
+    
+    响应:
+    {
+        "status": "success",
+        "translations": {
+            "en": "English translation",
+            "ja": "日本語翻訳"
+        }
+    }
+    """
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.prompts import ChatPromptTemplate
+        
+        data = await request.json()
+        text = data.get("text", "").strip()
+        source_lang = data.get("source_lang", "zh")
+        target_langs = data.get("target_langs", [])
+        
+        if not text:
+            return JSONResponse(content={
+                "status": "success",
+                "translations": {lang: "" for lang in target_langs}
+            })
+        
+        if not target_langs:
+            return JSONResponse(content={
+                "status": "success",
+                "translations": {}
+            })
+        
+        # 语言名称映射
+        lang_names = {
+            "zh": "中文",
+            "en": "English", 
+            "ja": "日本語"
+        }
+        
+        translations = {}
+        
+        # 使用 gpt-4o-mini 进行翻译，速度快且成本低
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+        
+        for target_lang in target_langs:
+            if target_lang == source_lang:
+                translations[target_lang] = text
+                continue
+                
+            source_name = lang_names.get(source_lang, source_lang)
+            target_name = lang_names.get(target_lang, target_lang)
+            
+            prompt = ChatPromptTemplate.from_template(
+                """你是一个专业的翻译助手。请将以下{source_name}文本翻译成{target_name}。
+保持原文的语气和风格，只返回翻译结果，不要添加任何解释或说明。
+
+原文：
+{text}
+
+翻译："""
+            )
+            
+            try:
+                response = await asyncio.to_thread(
+                    llm.invoke,
+                    prompt.format(
+                        source_name=source_name,
+                        target_name=target_name,
+                        text=text
+                    )
+                )
+                translations[target_lang] = response.content.strip()
+            except Exception as e:
+                logger.warning(f"Translation failed for {target_lang}: {e}")
+                translations[target_lang] = ""
+        
+        return JSONResponse(content={
+            "status": "success",
+            "translations": translations
+        })
+        
+    except Exception as e:
+        logger.error(f"Translation API error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)}
+        )
+
+
 @fastapi_app.post("/api/process-file")
 async def process_file(request: Request):
     """

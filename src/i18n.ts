@@ -291,6 +291,13 @@ const resources = {
       maxQuestionsReached: '每种语言最多只能添加3个推荐问题',
       settingsSaved: '设置已保存',
       settingsSaveFailed: '保存失败，请重试',
+      // 1.3.16: 自动翻译填充功能
+      autoFillOtherLangs: '自动填充其他语言',
+      autoFillHint: '输入任意一种语言的欢迎语后，点击"自动填充其他语言"按钮可自动翻译填充其他语言',
+      autoFillQuestionsHint: '输入任意一种语言的推荐问题后，点击"自动填充其他语言"按钮可自动翻译填充其他语言',
+      autoFillSuccess: '自动填充成功',
+      autoFillFailed: '自动填充失败，请重试',
+      noSourceTextToTranslate: '请先输入内容',
       
       // 1.2.54: 删除项目功能
       deleteProject: '删除项目',
@@ -645,6 +652,13 @@ const resources = {
       maxQuestionsReached: '各言語で追加できる推奨質問は最大3つまでです',
       settingsSaved: '設定を保存しました',
       settingsSaveFailed: '保存に失敗しました。再試行してください',
+      // 1.3.16: 自動翻訳機能
+      autoFillOtherLangs: '他の言語に自動入力',
+      autoFillHint: 'いずれかの言語でウェルカムメッセージを入力した後、「他の言語に自動入力」ボタンをクリックすると、他の言語に自動翻訳されます',
+      autoFillQuestionsHint: 'いずれかの言語で推奨質問を入力した後、「他の言語に自動入力」ボタンをクリックすると、他の言語に自動翻訳されます',
+      autoFillSuccess: '自動入力が完了しました',
+      autoFillFailed: '自動入力に失敗しました。再試行してください',
+      noSourceTextToTranslate: '先に内容を入力してください',
       
       // 1.2.54: 削除プロジェクト機能
       deleteProject: 'プロジェクトを削除',
@@ -999,6 +1013,13 @@ const resources = {
       maxQuestionsReached: 'Maximum 3 recommended questions per language',
       settingsSaved: 'Settings saved',
       settingsSaveFailed: 'Save failed, please try again',
+      // 1.3.16: Auto-translate feature
+      autoFillOtherLangs: 'Auto-fill other languages',
+      autoFillHint: 'After entering a welcome message in any language, click "Auto-fill other languages" to automatically translate and fill in other languages',
+      autoFillQuestionsHint: 'After entering recommended questions in any language, click "Auto-fill other languages" to automatically translate and fill in other languages',
+      autoFillSuccess: 'Auto-fill completed successfully',
+      autoFillFailed: 'Auto-fill failed, please try again',
+      noSourceTextToTranslate: 'Please enter content first',
       
       // 1.2.54: Delete project feature
       deleteProject: 'Delete Project',

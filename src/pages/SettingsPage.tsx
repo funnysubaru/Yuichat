@@ -8,12 +8,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Settings, Save, Loader2, Upload, X, Plus, FileText, User, MessageSquare, Brain, Trash2 } from 'lucide-react';
+import { Settings, Save, Loader2, Upload, X, Plus, FileText, User, MessageSquare, Brain, Trash2, Languages } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getCurrentUser } from '../services/authService';
 import { toast } from 'react-hot-toast';
 import { logger } from '../utils/logger';
 import { ConfirmModal } from '../components/ConfirmModal';
+
+// 1.3.16: 后端 API URL
+const PY_BACKEND_URL = import.meta.env.VITE_PY_BACKEND_URL || 'http://localhost:8000';
 
 // 1.2.5: Tab类型定义
 type TabType = 'project-info' | 'digital-employee' | 'conversation' | 'skills';
@@ -45,6 +48,10 @@ export function SettingsPage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  
+  // 1.3.16: 翻译相关状态
+  const [isTranslatingWelcome, setIsTranslatingWelcome] = useState(false);
+  const [isTranslatingQuestions, setIsTranslatingQuestions] = useState<Record<string, boolean>>({});
 
   // 1.1.14: 从URL参数加载当前项目
   useEffect(() => {
@@ -236,6 +243,109 @@ export function SettingsPage() {
         [lang]: questions.map((q: string, i: number) => i === index ? value : q)
       }
     });
+  };
+
+  // 1.3.16: 调用翻译 API
+  const translateText = async (text: string, sourceLang: string, targetLangs: string[]): Promise<Record<string, string>> => {
+    try {
+      const response = await fetch(`${PY_BACKEND_URL}/api/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          source_lang: sourceLang,
+          target_langs: targetLangs
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Translation failed');
+      }
+      
+      const data = await response.json();
+      return data.translations || {};
+    } catch (error) {
+      logger.error('Translation error:', error);
+      throw error;
+    }
+  };
+
+  // 1.3.16: 自动填充欢迎语
+  const handleAutoFillWelcome = async (sourceLang: 'zh' | 'en' | 'ja') => {
+    const sourceText = chatConfig.welcome_message[sourceLang];
+    if (!sourceText?.trim()) {
+      toast.error(t('noSourceTextToTranslate'));
+      return;
+    }
+    
+    const targetLangs = (['zh', 'en', 'ja'] as const).filter(lang => lang !== sourceLang);
+    
+    setIsTranslatingWelcome(true);
+    try {
+      const translations = await translateText(sourceText, sourceLang, targetLangs);
+      
+      setChatConfig({
+        ...chatConfig,
+        welcome_message: {
+          ...chatConfig.welcome_message,
+          ...translations
+        }
+      });
+      
+      toast.success(t('autoFillSuccess'));
+    } catch {
+      toast.error(t('autoFillFailed'));
+    } finally {
+      setIsTranslatingWelcome(false);
+    }
+  };
+
+  // 1.3.16: 自动填充推荐问题
+  const handleAutoFillQuestions = async (sourceLang: 'zh' | 'en' | 'ja') => {
+    const sourceQuestions = chatConfig.recommended_questions[sourceLang] || [];
+    if (sourceQuestions.length === 0 || sourceQuestions.every((q: string) => !q?.trim())) {
+      toast.error(t('noSourceTextToTranslate'));
+      return;
+    }
+    
+    const targetLangs = (['zh', 'en', 'ja'] as const).filter(lang => lang !== sourceLang);
+    
+    setIsTranslatingQuestions(prev => ({ ...prev, [sourceLang]: true }));
+    try {
+      // 翻译每个问题
+      const newQuestions: Record<string, string[]> = {
+        ...chatConfig.recommended_questions
+      };
+      
+      for (const targetLang of targetLangs) {
+        newQuestions[targetLang] = [];
+      }
+      
+      for (const question of sourceQuestions) {
+        if (!question?.trim()) {
+          for (const targetLang of targetLangs) {
+            newQuestions[targetLang].push('');
+          }
+          continue;
+        }
+        
+        const translations = await translateText(question, sourceLang, targetLangs);
+        for (const targetLang of targetLangs) {
+          newQuestions[targetLang].push(translations[targetLang] || '');
+        }
+      }
+      
+      setChatConfig({
+        ...chatConfig,
+        recommended_questions: newQuestions
+      });
+      
+      toast.success(t('autoFillSuccess'));
+    } catch {
+      toast.error(t('autoFillFailed'));
+    } finally {
+      setIsTranslatingQuestions(prev => ({ ...prev, [sourceLang]: false }));
+    }
   };
 
   const handleSave = async () => {
@@ -572,17 +682,39 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* 欢迎语（多语言） */}
+          {/* 欢迎语（多语言） - 1.3.16: 添加自动填充功能 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {t('welcomeMessageMultiLang')}
             </label>
+            <p className="text-xs text-gray-500 mb-3">
+              {t('autoFillHint')}
+            </p>
             <div className="space-y-4">
               {(['zh', 'en', 'ja'] as const).map((lang) => (
                 <div key={lang}>
-                  <label className="block text-xs text-gray-500 mb-1">
-                    {lang === 'zh' ? '中文' : lang === 'en' ? '英文' : '日文'}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs text-gray-500">
+                      {lang === 'zh' ? '中文' : lang === 'en' ? '英文' : '日文'}
+                    </label>
+                    {/* 1.3.16: 自动填充按钮 */}
+                    {chatConfig.welcome_message[lang]?.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => handleAutoFillWelcome(lang)}
+                        disabled={isTranslatingWelcome}
+                        className="text-xs text-primary hover:text-primary-dark flex items-center gap-1 disabled:opacity-50"
+                        title={t('autoFillOtherLangs')}
+                      >
+                        {isTranslatingWelcome ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Languages className="w-3 h-3" />
+                        )}
+                        {t('autoFillOtherLangs')}
+                      </button>
+                    )}
+                  </div>
                   <textarea
                     value={chatConfig.welcome_message[lang] || ''}
                     onChange={(e) => setChatConfig({
@@ -601,11 +733,14 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* 推荐问题（多语言） */}
+          {/* 推荐问题（多语言） - 1.3.16: 添加自动填充功能 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {t('recommendedQuestionsMultiLang')}
             </label>
+            <p className="text-xs text-gray-500 mb-3">
+              {t('autoFillQuestionsHint')}
+            </p>
             <div className="space-y-4">
               {(['zh', 'en', 'ja'] as const).map((lang) => (
                 <div key={lang}>
@@ -613,16 +748,35 @@ export function SettingsPage() {
                     <label className="block text-xs text-gray-500">
                       {lang === 'zh' ? '中文' : lang === 'en' ? '英文' : '日文'}
                     </label>
-                    {(chatConfig.recommended_questions[lang] || []).length < 3 && (
-                      <button
-                        type="button"
-                        onClick={() => handleAddQuestion(lang)}
-                        className="text-xs text-primary hover:text-primary-dark flex items-center gap-1"
-                      >
-                        <Plus className="w-3 h-3" />
-                        {t('addQuestion')}
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {/* 1.3.16: 自动填充按钮 */}
+                      {(chatConfig.recommended_questions[lang] || []).some((q: string) => q?.trim()) && (
+                        <button
+                          type="button"
+                          onClick={() => handleAutoFillQuestions(lang)}
+                          disabled={isTranslatingQuestions[lang]}
+                          className="text-xs text-primary hover:text-primary-dark flex items-center gap-1 disabled:opacity-50"
+                          title={t('autoFillOtherLangs')}
+                        >
+                          {isTranslatingQuestions[lang] ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Languages className="w-3 h-3" />
+                          )}
+                          {t('autoFillOtherLangs')}
+                        </button>
+                      )}
+                      {(chatConfig.recommended_questions[lang] || []).length < 3 && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddQuestion(lang)}
+                          className="text-xs text-primary hover:text-primary-dark flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          {t('addQuestion')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {(chatConfig.recommended_questions[lang] || []).map((question: string, index: number) => (
