@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.3.15 (2026-01-25)
+
+### 新增问答语义缓存功能（AI回复速度优化）
+
+- **目标**：对重复/相似问题实现 <500ms 响应时间（原需 18-28 秒）
+
+- **数据库新增**：
+  - 📄 **`supabase/migrations/20260125100000_add_qa_cache.sql`**：
+    - 新增 `qa_cache` 表：存储问答缓存（含 pgvector 向量索引）
+    - 新增 `match_qa_cache()` 函数：使用 pgvector 进行语义相似度匹配
+    - 新增 `update_qa_cache_hit()` 函数：更新缓存命中计数
+    - 新增 `clear_qa_cache_by_kb()` 函数：清除指定知识库的缓存
+    - 新增 `cleanup_expired_qa_cache()` 函数：清理过期缓存
+    - 向量索引使用 IVFFlat 算法加速查询
+
+- **后端新增缓存模块**：
+  - 📄 **`backend_py/qa_cache.py`**（新建）：
+    - `check_cache()`：检查问题是否命中缓存（相似度阈值 0.95）
+    - `save_to_cache()`：保存问答对到缓存（默认 24 小时 TTL）
+    - `clear_cache_by_kb()`：清除指定知识库的所有缓存
+    - `cleanup_expired_cache()`：清理所有过期缓存
+    - `get_cache_stats()`：获取缓存统计信息
+    - 支持环境变量配置：`QA_CACHE_ENABLED`、`QA_CACHE_SIMILARITY_THRESHOLD`、`QA_CACHE_TTL_HOURS`
+
+- **后端 API 集成**：
+  - 📄 **`backend_py/app.py`**：
+    - `/api/chat` 端点集成缓存检查，命中时直接返回缓存答案
+    - `/api/chat/stream` 端点集成缓存检查，命中时模拟流式输出保持 UI 一致性
+    - 缓存未命中时自动保存新的问答对（异步，不阻塞响应）
+    - 响应中新增 `cached: true` 标记表示缓存命中
+    - `/api/process-file` 和 `/api/process-url` 端点新增缓存失效逻辑（知识库更新时清除缓存）
+
+- **性能预期**：
+  - 缓存命中：<500ms（原 18-28 秒）
+  - 缓存未命中：与原来相同（18-28 秒），但会自动缓存结果
+  - 知识库更新时自动清除相关缓存，确保答案准确性
+
 ## 1.3.14 (2026-01-24)
 
 ### 新增对话统计数据看板功能

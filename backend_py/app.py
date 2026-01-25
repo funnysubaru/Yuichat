@@ -28,6 +28,9 @@ from question_retriever import get_recommended_questions, get_initial_questions
 # 1.3.1: 导入 Cloud Tasks 模块（用于异步任务调度）
 from cloud_tasks import trigger_question_generation, is_cloud_tasks_enabled
 
+# 1.3.15: 导入问答语义缓存模块（用于加速重复问题响应）
+from qa_cache import check_cache, save_to_cache, clear_cache_by_kb
+
 # 1.2.36: 配置日志记录器，确保生产环境也能记录错误
 logging.basicConfig(
     level=logging.INFO,
@@ -317,6 +320,17 @@ async def process_file(request: Request):
                 
                 if kb_result.data:
                     kb_id = kb_result.data.get("id")
+                    
+                    # 1.3.15: 清除该知识库的问答缓存（知识库内容已更新）
+                    try:
+                        cleared_count = await clear_cache_by_kb(kb_id)
+                        if os.getenv("ENV") == "development":
+                            print(f"🗑️ Cleared {cleared_count} QA cache entries for kb_id={kb_id}")
+                        else:
+                            logger.info(f"Cleared {cleared_count} QA cache entries for kb_id={kb_id}")
+                    except Exception as cache_clear_error:
+                        logger.warning(f"Failed to clear QA cache (non-blocking): {cache_clear_error}")
+                    
                     # 1.3.1: 优先使用 Cloud Tasks 异步触发，否则同步执行
                     if trigger_question_generation(kb_id, collection_name, doc_id=None):
                         # Cloud Tasks 已接收任务
@@ -562,6 +576,7 @@ async def process_url(request: Request):
                     print(f"   Traceback: {traceback.format_exc()}")
         
         # 1.3.1: 触发推荐问题生成的辅助函数（优先使用 Cloud Tasks）
+        # 1.3.15: 同时清除该知识库的问答缓存
         async def do_trigger_question_generation():
             """触发问题生成：优先 Cloud Tasks，否则同步执行"""
             if supabase:
@@ -574,6 +589,17 @@ async def process_url(request: Request):
                     
                     if kb_result.data:
                         kb_id = kb_result.data.get("id")
+                        
+                        # 1.3.15: 清除该知识库的问答缓存（知识库内容已更新）
+                        try:
+                            cleared_count = await clear_cache_by_kb(kb_id)
+                            if os.getenv("ENV") == "development":
+                                print(f"🗑️ Cleared {cleared_count} QA cache entries for kb_id={kb_id}")
+                            else:
+                                logger.info(f"Cleared {cleared_count} QA cache entries for kb_id={kb_id}")
+                        except Exception as cache_clear_error:
+                            logger.warning(f"Failed to clear QA cache (non-blocking): {cache_clear_error}")
+                        
                         # 1.3.1: 优先使用 Cloud Tasks
                         if trigger_question_generation(kb_id, collection_name, doc_id=None):
                             if os.getenv("ENV") == "development":
@@ -733,6 +759,36 @@ async def chat(request: Request):
         if not collection_name or not isinstance(collection_name, str) or not collection_name.strip():
             raise HTTPException(status_code=404, detail="Knowledge base not found or invalid kb_id: collection_name is empty")
         
+        # 1.3.15: 获取 knowledge_base_id（用于缓存查询）
+        kb_id_for_cache = kb_data.get("id") if kb_data else None
+        
+        # 1.3.15: 检查语义缓存（优先返回缓存结果）
+        if kb_id_for_cache:
+            try:
+                cached_result = await check_cache(
+                    question=query,
+                    knowledge_base_id=kb_id_for_cache,
+                    language=language
+                )
+                
+                if cached_result:
+                    if os.getenv("ENV") == "development":
+                        print(f"✅ QA Cache HIT for: {query[:50]}...")
+                    
+                    # 1.3.15: 直接返回缓存结果（<500ms）
+                    return JSONResponse(content={
+                        "status": "success",
+                        "answer": cached_result.get("answer", ""),
+                        "context": cached_result.get("context", ""),
+                        "collection_name": collection_name,
+                        "citations": cached_result.get("citations", []),
+                        "follow_up": cached_result.get("follow_up", []),
+                        "cached": True  # 1.3.15: 标记为缓存结果
+                    })
+            except Exception as cache_error:
+                # 缓存检查失败不阻塞主流程
+                logger.warning(f"Cache check failed: {cache_error}")
+        
         # 1.1.10: 构建消息历史
         from langchain_core.messages import HumanMessage, AIMessage
         messages = []
@@ -781,6 +837,19 @@ async def chat(request: Request):
         except Exception as fq_error:
             # 获取推荐问题失败不影响主响应
             logger.warning(f"Failed to get follow-up questions: {fq_error}")
+        
+        # 1.3.15: 异步保存结果到缓存（不阻塞响应）
+        if kb_id_for_cache and answer:
+            follow_up_for_cache = [{"content": q} for q in follow_up_questions]
+            asyncio.create_task(save_to_cache(
+                question=query,
+                knowledge_base_id=kb_id_for_cache,
+                answer=answer,
+                context=context,
+                citations=citations,
+                follow_up=follow_up_for_cache,
+                language=language
+            ))
         
         # 1.3.11: 添加 citations 到响应
         return JSONResponse(content={
@@ -871,6 +940,23 @@ async def chat_stream(request: Request):
         if not collection_name or not isinstance(collection_name, str) or not collection_name.strip():
             raise HTTPException(status_code=404, detail="Knowledge base not found or invalid kb_id: collection_name is empty")
         
+        # 1.3.15: 获取 knowledge_base_id（用于缓存查询）
+        kb_id_for_cache = kb_data.get("id") if kb_data else None
+        
+        # 1.3.15: 检查语义缓存（优先返回缓存结果）
+        cached_result = None
+        if kb_id_for_cache:
+            try:
+                cached_result = await check_cache(
+                    question=query,
+                    knowledge_base_id=kb_id_for_cache,
+                    language=language
+                )
+                if cached_result and os.getenv("ENV") == "development":
+                    print(f"✅ QA Cache HIT (stream) for: {query[:50]}...")
+            except Exception as cache_error:
+                logger.warning(f"Cache check failed in stream: {cache_error}")
+        
         # 构建消息历史
         messages = []
         for msg in conversation_history:
@@ -897,8 +983,34 @@ async def chat_stream(request: Request):
         
         # 1.2.24: 定义 SSE 流式生成器
         async def generate():
+            # 1.3.15: 使用 nonlocal 引用外部变量
+            nonlocal cached_result, kb_id_for_cache
+            
             try:
-                # 调用流式聊天函数
+                # 1.3.15: 如果命中缓存，模拟流式输出（保持 UI 一致性）
+                if cached_result:
+                    cached_answer = cached_result.get("answer", "")
+                    # 分块返回缓存的答案（每块约20字符，模拟打字效果）
+                    chunk_size = 20
+                    for i in range(0, len(cached_answer), chunk_size):
+                        chunk = cached_answer[i:i + chunk_size]
+                        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                        await asyncio.sleep(0.02)  # 轻微延迟模拟打字效果
+                    
+                    # 发送完成消息（使用缓存的 follow_up）
+                    done_data = {
+                        'answer': cached_answer,
+                        'context': cached_result.get('context', ''),
+                        'citations': cached_result.get('citations', []),
+                        'follow_up': cached_result.get('follow_up', []),
+                        'done': True,
+                        'cached': True  # 1.3.15: 标记为缓存结果
+                    }
+                    yield f"data: {json.dumps(done_data)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                
+                # 1.3.15: 未命中缓存，调用流式聊天函数
                 async for chunk_data in chat_node_stream(state):
                     if chunk_data.get("done"):
                         # 1.3.0: 在流结束时获取 follow-up 推荐问题
@@ -917,14 +1029,31 @@ async def chat_stream(request: Request):
                         
                         # 发送完成消息，包含完整答案、上下文和 follow-up 问题
                         # 1.3.11: 添加 citations 引用来源
+                        answer = chunk_data.get('answer', '')
+                        context = chunk_data.get('context', '')
+                        citations = chunk_data.get('citations', [])
+                        follow_up_for_response = [{"content": q} for q in follow_up_questions]
+                        
                         done_data = {
-                            'answer': chunk_data.get('answer', ''),
-                            'context': chunk_data.get('context', ''),
-                            'citations': chunk_data.get('citations', []),  # 1.3.11: 引用来源列表
-                            'follow_up': [{"content": q} for q in follow_up_questions],  # 1.3.0: 新增
+                            'answer': answer,
+                            'context': context,
+                            'citations': citations,  # 1.3.11: 引用来源列表
+                            'follow_up': follow_up_for_response,  # 1.3.0: 新增
                             'done': True
                         }
                         yield f"data: {json.dumps(done_data)}\n\n"
+                        
+                        # 1.3.15: 异步保存结果到缓存（不阻塞响应）
+                        if kb_id_for_cache and answer:
+                            asyncio.create_task(save_to_cache(
+                                question=query,
+                                knowledge_base_id=kb_id_for_cache,
+                                answer=answer,
+                                context=context,
+                                citations=citations,
+                                follow_up=follow_up_for_response,
+                                language=language
+                            ))
                     else:
                         # 发送数据块
                         chunk_text = chunk_data.get("chunk", "")

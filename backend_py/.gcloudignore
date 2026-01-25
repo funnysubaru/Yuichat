@@ -1,0 +1,85 @@
+# 1.3.13: .gcloudignore - 排除不需要上传到 Cloud Build 的文件
+# 这个文件可以显著减少上传体积，加速构建
+
+# Python 虚拟环境 (这是最大的!)
+venv/
+.venv/
+env/
+.env/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 本地数据库 (不应上传到生产)
+chroma_db/
+*.sqlite3
+*.db
+
+# 日志文件
+*.log
+logs/
+
+# 本地环境配置
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# 测试文件 (生产不需要)
+test_*.py
+tests/
+Tests/
+*_test.py
+pytest_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 文档 (生产不需要)
+*.md
+!chainlit.md
+docs/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+
+# 其他不需要的文件
+*.zip
+*.tar.gz
+*.rar
