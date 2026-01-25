@@ -3,6 +3,7 @@
  * 显示所有项目卡片，包括创建项目卡片
  * 1.1.5: 实现创建项目功能
  * 1.1.17: 在项目卡片蓝色区域显示完整项目名称，最多两行，超出显示省略号
+ * 1.3.17: 项目卡片改为淡紫色背景，在项目名称下方显示项目说明（一行，超出显示...）
  */
 
 import { useState, useEffect } from 'react';
@@ -47,21 +48,21 @@ export function AllProjectsPage() {
             name: t('exampleProject'),
             description: '示例项目描述',
             avatar: '示例',
-            gradient: 'from-purple-500 to-blue-500',
+            gradient: 'from-primary/80 to-primary',
           },
           {
             id: 'mock-2',
             name: '東映株式会社',
             description: 'Toei Co., Ltd.',
             avatar: '東',
-            gradient: 'from-blue-500 to-blue-600',
+            gradient: 'from-primary/80 to-primary',
           },
           {
             id: 'mock-3',
             name: '日本信号株式会社',
             description: 'Nippon Signal Co., Ltd.',
             avatar: '日',
-            gradient: 'from-blue-500 to-blue-600',
+            gradient: 'from-primary/80 to-primary',
           },
         ];
         setProjects(mockProjects);
@@ -85,7 +86,7 @@ export function AllProjectsPage() {
         name: kb.name,
         description: kb.description,
         avatar: kb.name.charAt(0),
-        gradient: 'from-blue-500 to-blue-600',
+        gradient: 'from-primary/80 to-primary',
       }));
 
       setProjects(formattedProjects);
@@ -169,36 +170,26 @@ export function AllProjectsPage() {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => navigate(`/knowledge-base?project=${project.id}`)}
-                  className={`bg-gradient-to-br ${project.gradient || 'from-blue-500 to-blue-600'} rounded-lg p-6 min-h-[200px] flex flex-col items-center justify-center cursor-pointer relative overflow-hidden`}
+                  className={`bg-gradient-to-br ${project.gradient || 'from-primary/80 to-primary'} rounded-lg p-6 min-h-[200px] flex flex-col items-center justify-center cursor-pointer relative overflow-hidden`}
                 >
-                  {/* 背景装饰 - 根据项目类型显示不同的图案 */}
+                  {/* 1.3.17: 背景装饰 - 淡紫色主题几何图案 */}
                   <div className="absolute inset-0 opacity-20">
-                    {project.gradient?.includes('purple') ? (
-                      // 紫色渐变项目：显示几何图案
-                      <>
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -mr-16 -mt-16"></div>
-                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full -ml-12 -mb-12"></div>
-                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-white rounded-lg rotate-45"></div>
-                      </>
-                    ) : (
-                      // 蓝色项目：显示三角形图案
-                      <>
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/30 rounded-full -mr-16 -mt-16"></div>
-                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/30 rounded-full -ml-12 -mb-12"></div>
-                        {/* 三角形图案 */}
-                        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 200 200">
-                          <polygon points="50,50 150,50 100,150" fill="white" opacity="0.1" />
-                          <polygon points="100,30 170,100 100,170 30,100" fill="white" opacity="0.1" />
-                        </svg>
-                      </>
-                    )}
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -mr-16 -mt-16"></div>
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full -ml-12 -mb-12"></div>
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-white rounded-lg rotate-45"></div>
                   </div>
 
-                  {/* 项目内容 - 1.1.17: 显示项目完整名称，最多两行，超出显示省略号 */}
+                  {/* 1.3.17: 项目内容 - 显示项目名称和说明 */}
                   <div className="relative z-10 text-center w-full px-2">
                     <div className="text-lg font-bold text-white line-clamp-2">
                       {project.name}
                     </div>
+                    {/* 1.3.17: 项目说明 - 仅在有说明时显示，限制一行 */}
+                    {project.description && (
+                      <div className="text-sm text-white/80 mt-2 line-clamp-1">
+                        {project.description}
+                      </div>
+                    )}
                   </div>
                 </motion.div>
                 {/* 标签 */}
