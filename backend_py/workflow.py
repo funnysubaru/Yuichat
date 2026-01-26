@@ -411,10 +411,21 @@ def embed_and_store_node(state: GraphState):
                 )
             
             # 生成向量并存储
+            # 1.3.18: 分批处理embedding，避免超过OpenAI API的token限制（30万tokens/请求）
+            # 每批最多处理100个chunks，确保不超过限制
+            EMBEDDING_BATCH_SIZE = 100
             embeddings_model = OpenAIEmbeddings()
             texts = [doc.page_content for doc in splits]
             metadatas = [doc.metadata for doc in splits]
-            vectors = embeddings_model.embed_documents(texts)
+            
+            # 1.3.18: 分批生成向量
+            vectors = []
+            for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+                batch_texts = texts[i:i + EMBEDDING_BATCH_SIZE]
+                batch_vectors = embeddings_model.embed_documents(batch_texts)
+                vectors.extend(batch_vectors)
+                if os.getenv("ENV") == "development":
+                    print(f"  📊 Embedding batch {i // EMBEDDING_BATCH_SIZE + 1}/{(len(texts) - 1) // EMBEDDING_BATCH_SIZE + 1}: {len(batch_texts)} chunks")
             
             # 1.2.56: 清理文本和 metadata 中的空字符（\u0000），防止 pgvector 插入失败
             def clean_null_chars(obj):

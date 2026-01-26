@@ -2,6 +2,14 @@
 
 ## 1.3.18 (2026-01-26)
 
+### 修复大文档Embedding超限问题
+
+- 📄 **`backend_py/workflow.py`**：
+  - 修复 `embed_and_store_node` 一次性发送所有chunks导致超过OpenAI API token限制的问题
+  - 新增 `EMBEDDING_BATCH_SIZE = 100` 分批处理机制
+  - 每批最多处理100个chunks，确保不超过30万tokens/请求的限制
+  - 添加分批进度日志输出
+
 ### 新增性能模式选择功能
 
 在项目设置的对话设置中添加性能模式选择，用户可根据场景需求选择不同的AI响应模式：
