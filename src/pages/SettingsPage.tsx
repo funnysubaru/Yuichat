@@ -367,6 +367,7 @@ export function SettingsPage() {
       }
       
       // 1.2.0: 保存项目信息和聊天配置
+      // 1.3.18: 添加 performance_mode 字段保存
       const { error } = await supabase
         .from('knowledge_bases')
         .update({
@@ -374,6 +375,7 @@ export function SettingsPage() {
           description,
           chat_config: {
             avatar_url: avatarUrl,
+            performance_mode: chatConfig.performance_mode, // 1.3.18: 性能模式
             welcome_message: chatConfig.welcome_message,
             recommended_questions: chatConfig.recommended_questions
           }
