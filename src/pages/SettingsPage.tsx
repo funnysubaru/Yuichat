@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Settings, Save, Loader2, Upload, X, Plus, FileText, User, MessageSquare, Brain, Trash2, Languages } from 'lucide-react';
+import { Settings, Save, Loader2, Upload, X, Plus, FileText, User, MessageSquare, Brain, Trash2, Languages, Zap, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getCurrentUser } from '../services/authService';
 import { toast } from 'react-hot-toast';
@@ -38,8 +38,10 @@ export function SettingsPage() {
   const [deleting, setDeleting] = useState(false);
   
   // 1.2.0: 聊天配置状态
+  // 1.3.18: 添加 performance_mode 字段
   const [chatConfig, setChatConfig] = useState<any>({
     avatar_url: '',
+    performance_mode: 'fast', // 1.3.18: 默认快速模式
     welcome_message: { zh: '', en: '', ja: '' },
     recommended_questions: { zh: [], en: [], ja: [] }
   });
@@ -81,9 +83,11 @@ export function SettingsPage() {
           setName(data.name || '');
           setDescription(data.description || '');
           // 1.2.0: 加载聊天配置
+          // 1.3.18: 添加 performance_mode 字段读取
           const config = data.chat_config || {};
           setChatConfig({
             avatar_url: config.avatar_url || '',
+            performance_mode: config.performance_mode || 'fast', // 1.3.18: 默认快速模式
             welcome_message: config.welcome_message || { zh: '', en: '', ja: '' },
             recommended_questions: config.recommended_questions || { zh: [], en: [], ja: [] }
           });
@@ -106,9 +110,11 @@ export function SettingsPage() {
           setName(data.name || '');
           setDescription(data.description || '');
           // 1.2.0: 加载聊天配置
+          // 1.3.18: 添加 performance_mode 字段读取
           const config = data.chat_config || {};
           setChatConfig({
             avatar_url: config.avatar_url || '',
+            performance_mode: config.performance_mode || 'fast', // 1.3.18: 默认快速模式
             welcome_message: config.welcome_message || { zh: '', en: '', ja: '' },
             recommended_questions: config.recommended_questions || { zh: [], en: [], ja: [] }
           });
@@ -678,6 +684,82 @@ export function SettingsPage() {
                   onChange={handleAvatarSelect}
                   className="hidden"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* 1.3.18: 性能模式选择 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('performanceMode')}
+            </label>
+            <p className="text-xs text-gray-500 mb-3">
+              {t('performanceModeHint')}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 快速模式卡片 */}
+              <div
+                onClick={() => setChatConfig({ ...chatConfig, performance_mode: 'fast' })}
+                className={`relative cursor-pointer rounded-lg border-2 p-4 transition-all hover:shadow-md ${
+                  chatConfig.performance_mode === 'fast'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                    chatConfig.performance_mode === 'fast'
+                      ? 'border-primary'
+                      : 'border-gray-300'
+                  }`}>
+                    {chatConfig.performance_mode === 'fast' && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="w-4 h-4 text-primary" />
+                      <span className="font-medium text-gray-900">{t('fastMode')}</span>
+                    </div>
+                    <p className="text-sm text-gray-500 leading-relaxed">
+                      {t('fastModeDesc')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 精准模式卡片 */}
+              <div
+                onClick={() => setChatConfig({ ...chatConfig, performance_mode: 'accurate' })}
+                className={`relative cursor-pointer rounded-lg border-2 p-4 transition-all hover:shadow-md ${
+                  chatConfig.performance_mode === 'accurate'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                    chatConfig.performance_mode === 'accurate'
+                      ? 'border-primary'
+                      : 'border-gray-300'
+                  }`}>
+                    {chatConfig.performance_mode === 'accurate' && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Target className="w-4 h-4 text-primary" />
+                      <span className="font-medium text-gray-900">{t('accurateMode')}</span>
+                      <span className="px-1.5 py-0.5 text-xs font-medium text-white bg-primary rounded">
+                        {t('betaTag')}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500 leading-relaxed">
+                      {t('accurateModeDesc')}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

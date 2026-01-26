@@ -61,6 +61,7 @@ else:
 # 1.1.11: 添加URL爬虫相关字段
 # 1.2.52: 添加 language 字段，支持多语言回复
 # 1.3.11: 添加 citations 字段，支持引用来源展示
+# 1.3.18: 添加 performance_mode 字段，支持性能模式选择
 class GraphState(TypedDict):
     file_path: str
     urls: List[str]  # 1.1.11: URL列表（可选）
@@ -72,6 +73,7 @@ class GraphState(TypedDict):
     answer: str
     language: str  # 1.2.52: 语言设置（zh/en/ja）
     citations: List[Dict[str, Any]]  # 1.3.11: 引用来源列表
+    performance_mode: str  # 1.3.18: 性能模式（fast/accurate）
 
 # 1.2.43: 从 URL 下载文件到临时目录
 def download_file_from_url(url: str) -> str:
@@ -745,7 +747,16 @@ Reference Materials:
         MessagesPlaceholder(variable_name="messages"),
     ])
     
-    llm = ChatOpenAI(model="gpt-4o", streaming=True)
+    # 1.3.18: 根据 performance_mode 选择模型
+    # fast: gpt-4o-mini（响应快，成本低）
+    # accurate: gpt-4o（质量高，响应慢）
+    performance_mode = state.get('performance_mode', 'fast')
+    # model = "gpt-4o"  # 1.3.18: 旧版硬编码模型
+    model = "gpt-4o-mini" if performance_mode == 'fast' else "gpt-4o"
+    if os.getenv("ENV") == "development":
+        print(f"🤖 使用模型: {model} (performance_mode: {performance_mode})")
+    
+    llm = ChatOpenAI(model=model, streaming=True)
     chain = prompt | llm
     
     response = chain.invoke({"context": context, "messages": messages})
@@ -1012,7 +1023,16 @@ Reference Materials:
         MessagesPlaceholder(variable_name="messages"),
     ])
     
-    llm = ChatOpenAI(model="gpt-4o", streaming=True)
+    # 1.3.18: 根据 performance_mode 选择模型
+    # fast: gpt-4o-mini（响应快，成本低）
+    # accurate: gpt-4o（质量高，响应慢）
+    performance_mode = state.get('performance_mode', 'fast')
+    # model = "gpt-4o"  # 1.3.18: 旧版硬编码模型
+    model = "gpt-4o-mini" if performance_mode == 'fast' else "gpt-4o"
+    if os.getenv("ENV") == "development":
+        print(f"🤖 [Stream] 使用模型: {model} (performance_mode: {performance_mode})")
+    
+    llm = ChatOpenAI(model=model, streaming=True)
     chain = prompt | llm
     
     # 1.2.24: 使用 astream 进行流式输出

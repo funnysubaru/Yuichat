@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.3.18 (2026-01-26)
+
+### 新增性能模式选择功能
+
+在项目设置的对话设置中添加性能模式选择，用户可根据场景需求选择不同的AI响应模式：
+
+- **快速模式**：使用 `gpt-4o-mini`，响应时间约1秒内，适合实体机器人、电话等需要实时响应的场景
+- **精准模式**：使用 `gpt-4o`，响应时间约10秒左右，适合文字类客服，大模型通过多轮思考得出结论
+
+#### 前端修改
+
+- 📄 **`src/pages/SettingsPage.tsx`**：
+  - 在 AI 头像和欢迎语之间添加性能模式选择卡片组件
+  - 使用双卡片布局，类似 ChatMax 的设计风格
+  - 选中状态使用 primary 颜色边框高亮
+  - 精准模式卡片显示 Beta 标签
+  - 添加 `Zap` 和 `Target` 图标用于区分两种模式
+
+- 📄 **`src/i18n.ts`**：
+  - 新增 `performanceMode`：性能模式标题
+  - 新增 `performanceModeHint`：性能模式提示
+  - 新增 `fastMode`：快速模式标题
+  - 新增 `fastModeDesc`：快速模式描述
+  - 新增 `accurateMode`：精准模式标题
+  - 新增 `accurateModeDesc`：精准模式描述
+  - 新增 `betaTag`：Beta 标签
+  - 支持中文、英文、日文三语言
+
+#### 后端修改
+
+- 📄 **`backend_py/workflow.py`**：
+  - 在 `GraphState` 中添加 `performance_mode` 字段
+  - 修改 `chat_node` 函数：根据 `performance_mode` 动态选择模型（fast → gpt-4o-mini，accurate → gpt-4o）
+  - 修改 `chat_node_stream` 函数：同样支持动态模型选择
+
+- 📄 **`backend_py/app.py`**：
+  - `/api/chat` 端点：添加 `performance_mode` 参数获取和传递
+  - `/api/chat/stream` 端点：添加 `performance_mode` 参数获取和传递
+  - 从 `chat_config` JSONB 字段读取项目级别的 `performance_mode` 设置
+  - 支持通过请求参数覆盖项目设置
+
+#### 数据结构
+
+- `knowledge_bases.chat_config` JSONB 字段新增 `performance_mode` 属性：
+  - `"fast"`：快速模式（默认）
+  - `"accurate"`：精准模式
+
 ## 1.3.17 (2026-01-25)
 
 ### 项目预览卡片样式优化

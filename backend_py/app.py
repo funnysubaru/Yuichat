@@ -795,6 +795,8 @@ async def chat(request: Request):
         conversation_history = data.get("conversation_history", [])
         user_id = data.get("user_id")  # 1.1.13: 可选，用于权限验证
         language = data.get("language", "zh")  # 1.2.52: 语言参数，默认中文
+        # 1.3.18: 性能模式参数，可从请求参数或 chat_config 中获取
+        performance_mode = data.get("performance_mode")  # 可选，优先使用请求参数
         
         # 1.2.52: 标准化语言代码
         if language not in ["zh", "en", "ja"]:
@@ -813,8 +815,9 @@ async def chat(request: Request):
         if supabase:
             try:
                 # 1.1.13: 尝试通过 share_token 查询知识库信息
+                # 1.3.18: 添加 chat_config 字段获取，用于读取 performance_mode
                 result = supabase.table("knowledge_bases")\
-                    .select("vector_collection, user_id, id")\
+                    .select("vector_collection, user_id, id, chat_config")\
                     .eq("share_token", kb_token)\
                     .single()\
                     .execute()
@@ -865,6 +868,14 @@ async def chat(request: Request):
         # 1.3.15: 获取 knowledge_base_id（用于缓存查询）
         kb_id_for_cache = kb_data.get("id") if kb_data else None
         
+        # 1.3.18: 从 chat_config 获取 performance_mode（如果请求参数未提供）
+        if not performance_mode and kb_data:
+            chat_config = kb_data.get("chat_config") or {}
+            performance_mode = chat_config.get("performance_mode", "fast")
+        # 确保有默认值
+        if not performance_mode or performance_mode not in ["fast", "accurate"]:
+            performance_mode = "fast"
+        
         # 1.3.15: 检查语义缓存（优先返回缓存结果）
         if kb_id_for_cache:
             try:
@@ -906,6 +917,7 @@ async def chat(request: Request):
         
         # 1.1.10: 准备状态并调用工作流
         # 1.2.52: 添加 language 参数，支持多语言回复
+        # 1.3.18: 添加 performance_mode 参数，支持性能模式选择
         state = {
             "messages": messages,
             "collection_name": collection_name,
@@ -914,8 +926,12 @@ async def chat(request: Request):
             "splits": [],
             "context": "",
             "answer": "",
-            "language": language  # 1.2.52: 语言设置
+            "language": language,  # 1.2.52: 语言设置
+            "performance_mode": performance_mode  # 1.3.18: 性能模式
         }
+        
+        if os.getenv("ENV") == "development":
+            print(f"🚀 [/api/chat] 使用性能模式: {performance_mode}")
         
         # 执行工作流（只执行 chat 节点）
         # 1.2.24: 移除 cl.make_async，直接使用异步调用
@@ -985,6 +1001,8 @@ async def chat_stream(request: Request):
         conversation_history = data.get("conversation_history", [])
         user_id = data.get("user_id")  # 可选，用于权限验证
         language = data.get("language", "zh")  # 1.2.52: 语言参数，默认中文
+        # 1.3.18: 性能模式参数，可从请求参数或 chat_config 中获取
+        performance_mode = data.get("performance_mode")  # 可选，优先使用请求参数
         
         # 1.2.52: 标准化语言代码
         if language not in ["zh", "en", "ja"]:
@@ -997,13 +1015,14 @@ async def chat_stream(request: Request):
             raise HTTPException(status_code=400, detail="Missing kb_id")
         
         # 1.2.24: 从 Supabase 获取 vector_collection 并验证权限（与 /api/chat 相同逻辑）
+        # 1.3.18: 添加 chat_config 字段获取，用于读取 performance_mode
         collection_name = None
         kb_data = None
         
         if supabase:
             try:
                 result = supabase.table("knowledge_bases")\
-                    .select("vector_collection, user_id, id")\
+                    .select("vector_collection, user_id, id, chat_config")\
                     .eq("share_token", kb_token)\
                     .single()\
                     .execute()
@@ -1046,6 +1065,14 @@ async def chat_stream(request: Request):
         # 1.3.15: 获取 knowledge_base_id（用于缓存查询）
         kb_id_for_cache = kb_data.get("id") if kb_data else None
         
+        # 1.3.18: 从 chat_config 获取 performance_mode（如果请求参数未提供）
+        if not performance_mode and kb_data:
+            chat_config = kb_data.get("chat_config") or {}
+            performance_mode = chat_config.get("performance_mode", "fast")
+        # 确保有默认值
+        if not performance_mode or performance_mode not in ["fast", "accurate"]:
+            performance_mode = "fast"
+        
         # 1.3.15: 检查语义缓存（优先返回缓存结果）
         cached_result = None
         if kb_id_for_cache:
@@ -1073,6 +1100,7 @@ async def chat_stream(request: Request):
         
         # 准备状态
         # 1.2.52: 添加 language 参数，支持多语言回复
+        # 1.3.18: 添加 performance_mode 参数，支持性能模式选择
         state = {
             "messages": messages,
             "collection_name": collection_name,
@@ -1081,8 +1109,12 @@ async def chat_stream(request: Request):
             "splits": [],
             "context": "",
             "answer": "",
-            "language": language  # 1.2.52: 语言设置
+            "language": language,  # 1.2.52: 语言设置
+            "performance_mode": performance_mode  # 1.3.18: 性能模式
         }
+        
+        if os.getenv("ENV") == "development":
+            print(f"🚀 [/api/chat/stream] 使用性能模式: {performance_mode}")
         
         # 1.2.24: 定义 SSE 流式生成器
         async def generate():
