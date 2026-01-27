@@ -129,9 +129,13 @@ export function AllProjectsPage() {
         </h1>
 
         {/* 1.2.60: 将loading动画居中到页面正中 */}
+        {/* 1.2.58: 添加动态点点点效果 */}
         {isLoading ? (
           <div className="h-[70vh] flex items-center justify-center">
-            <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+            <div className="flex items-center gap-3">
+              <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+              <span className="text-gray-600 text-lg thinking-dots">{t('aiThinking')}</span>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

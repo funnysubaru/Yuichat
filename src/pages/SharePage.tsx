@@ -110,10 +110,14 @@ export function SharePage() {
 
   // 1.2.59: 统一 loading 动画为 YUI 文字动画（与其他页面一致）
   // 1.2.60: 将loading动画居中到页面正中
+  // 1.2.58: 添加动态点点点效果
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+        <div className="flex items-center gap-3">
+          <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+          <span className="text-gray-600 text-lg thinking-dots">{t('aiThinking')}</span>
+        </div>
       </div>
     );
   }

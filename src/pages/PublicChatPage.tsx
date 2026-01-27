@@ -70,11 +70,15 @@ export function PublicChatPage() {
   }, [shareToken, t]); // 1.2.28: 添加 t 依赖
 
   // 1.2.59: 统一 loading 动画为 YUI 文字动画（与其他页面一致）
+  // 1.2.58: 添加动态点点点效果
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl mb-4">YUI</span>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+            <span className="text-gray-600 text-lg thinking-dots">{t('aiThinking')}</span>
+          </div>
           <p className="text-gray-600">{t('publicChatLoading')}</p>
         </div>
       </div>

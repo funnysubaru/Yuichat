@@ -780,9 +780,13 @@ export function KnowledgeBasePage() {
         </div>
 
         {/* Table */}
+        {/* 1.2.58: 添加动态点点点效果 */}
         {isLoading ? (
           <div className="text-center py-12">
-            <span className="inline-block text-primary font-semibold yui-loading-animation">YUI</span>
+            <div className="flex items-center justify-center gap-3">
+              <span className="inline-block text-primary font-semibold yui-loading-animation">YUI</span>
+              <span className="text-gray-600 thinking-dots">{t('aiThinking')}</span>
+            </div>
           </div>
         ) : filteredDocuments.length === 0 ? (
           <div className="text-center py-12 text-gray-500">

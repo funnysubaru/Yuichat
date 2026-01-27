@@ -67,10 +67,14 @@ function App() {
   };
 
   // 1.1.5: 加载中显示加载状态
+  // 1.2.58: 添加动态点点点效果
   if (isLoading && isSupabaseAvailable) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+        <div className="flex items-center gap-3">
+          <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+          <span className="text-gray-600 text-lg thinking-dots">{t('aiThinking')}</span>
+        </div>
       </div>
     );
   }

@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.3.25 (2026-01-28)
+
+### UI优化 - Loading动画增强
+
+#### 改进内容
+
+- **动态思考提示**：
+  - ✨ 在YUI logo旋转动画右侧添加"思考中"文字
+  - ✨ 实现动态点点点效果（"。。。"依次出现和消失）
+  - ✨ 提供更好的视觉反馈，让用户了解AI正在处理
+
+#### 技术实现
+
+- **CSS动画** (`src/index.css`)：
+  - 新增 `thinkingDots` 关键帧动画
+  - 使用 `::after` 伪元素实现动态点点点效果
+  - 1.5秒循环动画，平滑过渡
+
+- **组件更新**：
+  - `ChatInterface.tsx` - 聊天界面loading状态
+  - `App.tsx` - 应用初始化loading
+  - `SharePage.tsx` - 分享页面loading
+  - `SettingsPage.tsx` - 设置页面loading
+  - `AllProjectsPage.tsx` - 所有项目页loading
+  - `DashboardPage.tsx` - 仪表板loading
+  - `ConversationDataPage.tsx` - 对话数据页loading
+  - `KnowledgeBasePage.tsx` - 知识库页面loading
+  - `PublicChatPage.tsx` - 公共聊天页loading
+
+#### 视觉效果
+
+```
+YUI (旋转) + 思考中... (动态点点点)
+         ↓
+YUI (旋转) + 思考中. (单点)
+         ↓
+YUI (旋转) + 思考中.. (两点)
+         ↓
+YUI (旋转) + 思考中... (三点)
+         ↓
+YUI (旋转) + 思考中 (无点)
+```
+
+---
+
 ## 1.3.24 (2026-01-28)
 
 ### 添加完整的备份与恢复系统

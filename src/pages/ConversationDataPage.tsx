@@ -216,10 +216,14 @@ export function ConversationDataPage() {
     return 'bg-gray-100 text-gray-700';
   };
 
+  // 1.2.58: 添加动态点点点效果
   if (loading && !kb) {
     return (
       <div className="h-full flex items-center justify-center">
-        <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+        <div className="flex items-center gap-3">
+          <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
+          <span className="text-gray-600 text-lg thinking-dots">{t('aiThinking')}</span>
+        </div>
       </div>
     );
   }

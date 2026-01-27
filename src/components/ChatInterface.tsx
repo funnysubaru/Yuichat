@@ -1465,7 +1465,8 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                         YUI
                       </span>
                       {/* 1.2.27: 国际化思考中文本 */}
-                      <p className="text-gray-800 leading-relaxed">
+                      {/* 1.2.58: 添加动态点点点效果 */}
+                      <p className="text-gray-800 leading-relaxed thinking-dots">
                         {t('aiThinking')}
                       </p>
                     </div>
@@ -1632,7 +1633,11 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
             {/* 1.2.23: 使用项目头像，如果没有设置则使用默认头像 */}
             <Avatar avatarUrl={getAvatarUrl()} size="sm" />
             <div className="bg-gray-100 rounded-lg px-4 py-3">
-              <span className="inline-block text-gray-400 font-semibold yui-loading-animation text-sm">YUI</span>
+              {/* 1.2.58: 添加动态点点点效果 */}
+              <div className="flex items-center gap-2">
+                <span className="inline-block text-gray-400 font-semibold yui-loading-animation text-sm">YUI</span>
+                <span className="text-gray-600 text-sm thinking-dots">{t('aiThinking')}</span>
+              </div>
             </div>
           </div>
         )}
