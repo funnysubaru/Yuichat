@@ -55,16 +55,17 @@ function isSocialMediaCrawler(userAgent: string): boolean {
 }
 
 // 获取语言参数
+// 1.2.58: 默认语言改为日文
 function getLanguage(url: URL): string {
   const lang = url.searchParams.get('lang');
   if (lang && ['zh', 'en', 'ja'].includes(lang)) {
     return lang;
   }
-  return 'zh';
+  return 'ja'; // 默认日文
 }
 
 function generateHtml(baseUrl: string, path: string, search: string, lang: string, isCrawler: boolean): string {
-  const content = ogContent[lang] || ogContent.zh;
+  const content = ogContent[lang] || ogContent.ja;
   const spaPath = path.replace('/api/share/', '/share/');
   const currentUrl = `${baseUrl}${spaPath}${search}`;
   
