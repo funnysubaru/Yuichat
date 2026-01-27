@@ -59,8 +59,10 @@ scripts/test-result/
 *.tmp
 *.temp
 
-# Todo files (personal planning)
+# Personal planning and documentation
 Todo/
+Plan/
+docs/
 
 # Supabase local
 .branches/
