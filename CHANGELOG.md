@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.3.23 (2026-01-27)
+
+### 分享链接预览动态显示项目名称和说明
+
+优化外部分享链接的预览内容，从数据库动态读取项目名称和说明文字，替代之前的静态默认内容。
+
+#### 变更内容
+
+- **动态查询项目信息**：通过 share_token 查询 Supabase 获取项目的 `name` 和 `description`
+- **智能显示逻辑**：
+  - 如果项目有说明文：标题显示 "YUIChat - {项目名}"，描述显示项目说明
+  - 如果项目没有说明文：只显示项目名称，不显示描述
+- **后备机制**：查询失败时使用多语言默认内容
+
+#### 修改文件
+
+- 📄 **`api/share/[token].ts`**：
+  - 新增 `fetchKnowledgeBaseInfo()` 函数从 Supabase REST API 查询项目信息
+  - 新增 `extractTokenFromPath()` 函数从 URL 路径提取 share_token
+  - 新增 `getOgContent()` 函数根据项目信息生成 OG 内容
+  - 更新 `generateHtml()` 支持动态标题和描述
+  - 调整缓存策略：查询到项目信息时缓存 30 分钟，否则 1 小时
+
+#### 环境变量要求
+
+在 Vercel 中需要配置以下环境变量：
+- `SUPABASE_URL`: Supabase 项目 URL
+- `SUPABASE_ANON_KEY`: Supabase anon key
+
+---
+
 ## 1.3.22 (2026-01-27)
 
 ### 优化引用来源显示配置
