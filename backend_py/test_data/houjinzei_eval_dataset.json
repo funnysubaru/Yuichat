@@ -1,0 +1,108 @@
+{
+  "name": "法人税法 RAG 评估数据集",
+  "version": "1.0.0",
+  "created_at": "2026-01-27",
+  "knowledge_base": {
+    "id": "f870ee08-86b7-4911-932e-7b28f2727276",
+    "name": "法人税法",
+    "collection_name": "kb_1769060431971_13o0t",
+    "source_url": "https://laws.e-gov.go.jp/law/340AC0000000034/20210301_502AC0000000008"
+  },
+  "test_cases": [
+    {
+      "id": "001",
+      "question": "特定支配関係とは何ですか？",
+      "ground_truth": "特定支配関係とは、一方の法人が他方の法人の発行済株式等の50%を超える数の株式等を直接又は間接に保有する関係などをいいます。",
+      "expected_keywords": ["特定支配関係", "50%", "株式", "法人"],
+      "language": "ja",
+      "difficulty": "medium",
+      "category": "定義"
+    },
+    {
+      "id": "002",
+      "question": "連結欠損金の適用条件は何ですか？",
+      "ground_truth": "連結欠損金を繰越控除するためには、連結法人が継続して連結確定申告書を提出し、欠損金の繰越控除を適用する事業年度の確定申告書等にも欠損金の明細を記載する必要があります。",
+      "expected_keywords": ["連結欠損金", "繰越控除", "確定申告"],
+      "language": "ja",
+      "difficulty": "hard",
+      "category": "欠損金処理"
+    },
+    {
+      "id": "003",
+      "question": "合併後の未処理欠損金はどのように計算されますか？",
+      "ground_truth": "合併後の未処理欠損金は、被合併法人の適格合併等前の欠損金額と合併法人の欠損金額を一定の計算式に基づいて算定します。",
+      "expected_keywords": ["合併", "欠損金", "被合併法人", "計算"],
+      "language": "ja",
+      "difficulty": "hard",
+      "category": "企業再編"
+    },
+    {
+      "id": "004",
+      "question": "法人税の申告期限はいつですか？",
+      "ground_truth": "法人税の申告は、各事業年度終了の日の翌日から2月以内に確定申告書を提出する必要があります。",
+      "expected_keywords": ["申告", "期限", "2月", "事業年度"],
+      "language": "ja",
+      "difficulty": "easy",
+      "category": "申告手続"
+    },
+    {
+      "id": "005",
+      "question": "税務署長はどのような決定を下すことができますか？",
+      "ground_truth": "税務署長は、納税義務者が申告書を提出しない場合や記載内容に誤りがある場合に、更正・決定を行うことができます。また、青色申告の承認取消しなどの決定も行うことができます。",
+      "expected_keywords": ["税務署長", "決定", "更正", "申告"],
+      "language": "ja",
+      "difficulty": "medium",
+      "category": "税務署権限"
+    },
+    {
+      "id": "006",
+      "question": "青色申告の承認を受けるための条件は何ですか？",
+      "ground_truth": "青色申告の承認を受けるためには、一定の帳簿書類を備え付け、これに取引を記録し、かつ、保存することが必要です。また、所轄税務署長に対して承認申請書を提出する必要があります。",
+      "expected_keywords": ["青色申告", "承認", "帳簿", "申請"],
+      "language": "ja",
+      "difficulty": "medium",
+      "category": "申告制度"
+    },
+    {
+      "id": "007",
+      "question": "適格合併の要件は何ですか？",
+      "ground_truth": "適格合併とは、完全支配関係がある法人間の合併や、支配関係がある法人間で事業の継続性等の要件を満たす合併などをいいます。",
+      "expected_keywords": ["適格合併", "完全支配関係", "要件", "事業継続"],
+      "language": "ja",
+      "difficulty": "hard",
+      "category": "企業再編"
+    },
+    {
+      "id": "008",
+      "question": "法人税率は何パーセントですか？",
+      "ground_truth": "法人税の税率は、原則として23.2%です。ただし、中小法人等については、年800万円以下の所得金額に対して15%の軽減税率が適用されます。",
+      "expected_keywords": ["税率", "23.2%", "15%", "中小法人"],
+      "language": "ja",
+      "difficulty": "easy",
+      "category": "税率"
+    },
+    {
+      "id": "009",
+      "question": "欠損金の繰越控除期間は何年ですか？",
+      "ground_truth": "欠損金の繰越控除期間は、原則として10年間です。ただし、一定の制限が設けられており、大法人については控除限度額が設定されています。",
+      "expected_keywords": ["欠損金", "繰越", "10年", "控除"],
+      "language": "ja",
+      "difficulty": "medium",
+      "category": "欠損金処理"
+    },
+    {
+      "id": "010",
+      "question": "受取配当等の益金不算入制度とは何ですか？",
+      "ground_truth": "受取配当等の益金不算入制度とは、法人が他の法人から受け取る配当等について、二重課税を排除するため、一定割合を益金に算入しない制度です。",
+      "expected_keywords": ["受取配当", "益金不算入", "二重課税"],
+      "language": "ja",
+      "difficulty": "medium",
+      "category": "益金・損金"
+    }
+  ],
+  "evaluation_config": {
+    "retrieve_k": 4,
+    "similarity_threshold": 0.7,
+    "metrics": ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
+  }
+}

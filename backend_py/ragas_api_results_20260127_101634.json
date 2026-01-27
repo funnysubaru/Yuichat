@@ -1,0 +1,16 @@
+{
+  "config": {
+    "name": "法人税法",
+    "share_token": "deb48327-150b-408d-8b0c-56ce7333a987",
+    "vector_collection": "kb_1769060431971_13o0t",
+    "kb_id": "f870ee08-86b7-4911-932e-7b28f2727276"
+  },
+  "summary": {
+    "avg_scores": {},
+    "avg_keyword_hit_rate": 0,
+    "api_success_rate": 0.0,
+    "total_cases": 5,
+    "successful_cases": 0
+  },
+  "details": []
+}

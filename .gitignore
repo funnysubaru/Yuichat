@@ -67,8 +67,10 @@ backend/supabase/config.toml
 
 # Backup files
 backup/
+backups/
 *.backup
 **/*.backup
+*.dump
 
 # Local development configs
 backend/wrangler.toml

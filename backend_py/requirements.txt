@@ -44,3 +44,6 @@ defusedxml  # 1.2.48: 安全的 XML 解析
 python-magic  # 1.2.48: 文件类型检测（可选，提升兼容性）
 # 1.3.1: GCP Cloud Tasks - 异步任务队列（用于问题生成等后台任务）
 google-cloud-tasks  # 1.3.1: Cloud Tasks 客户端
+# 1.3.16: RAG 评估框架
+ragas  # 1.3.16: RAG 回复精度评估框架
+datasets  # 1.3.16: Hugging Face datasets (RAGAS 依赖)

@@ -70,10 +70,12 @@ export function SharePage() {
   // 1.2.52: 区分两种 URL：
   // - shareUrl: 给真实用户的链接，不含语言参数，用户会根据浏览器语言自动选择
   // - testUrl: 管理员测试用的链接，携带当前语言参数
+  // 1.3.23: 分享链接使用 /api/share/:token 格式，支持动态 OG 预览
+  //         社交媒体爬虫会得到动态 OG 标签，普通用户会被自动重定向到聊天页面
   const frontendBaseUrl = window.location.origin; // 自动获取当前域名
   const currentLang = i18n.language.split('-')[0]; // 获取当前语言（去除地区代码）
-  const shareUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}` : ''; // 给真实用户，不含 lang
-  const testUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}?lang=${currentLang}` : ''; // 管理员测试用
+  const shareUrl = kb ? `${frontendBaseUrl}/api/share/${kb.share_token}` : ''; // 1.3.23: 使用 API 路由，支持动态 OG 预览
+  const testUrl = kb ? `${frontendBaseUrl}/share/${kb.share_token}?lang=${currentLang}` : ''; // 管理员测试用，直接访问聊天页面
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrl); // 复制不含语言参数的链接

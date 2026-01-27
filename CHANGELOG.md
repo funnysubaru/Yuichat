@@ -1,5 +1,66 @@
 # Changelog
 
+## 1.3.24 (2026-01-28)
+
+### 添加完整的备份与恢复系统
+
+为 Cloud Run 和 Supabase 实现了完整的备份与恢复解决方案，支持手动和自动备份。
+
+#### 新增功能
+
+- **自动备份脚本** (`backup-all.sh`）：
+  - ✅ 备份 Cloud Run 服务配置、镜像信息、修订版本
+  - ✅ 备份 Supabase 数据库（完整备份、仅结构、仅数据）
+  - ✅ 备份 Supabase migrations 文件
+  - ✅ 备份所有配置文件（Dockerfile、cloudbuild.yaml 等）
+  - ✅ 自动生成备份清单和元信息
+  - ✅ 友好的彩色终端输出和进度提示
+
+- **恢复脚本** (`restore-backup.sh`）：
+  - ✅ 支持完整恢复或部分恢复（--cloud-run、--supabase、--migrations）
+  - ✅ 双重确认机制防止误操作
+  - ✅ 自动备份现有数据再执行恢复
+  - ✅ 详细的操作日志和错误处理
+
+- **备份指南** (`docs/BACKUP_GUIDE.md`）：
+  - 📖 完整的备份与恢复操作指南
+  - 📖 三种自动化备份方案（Cloud Scheduler、GitHub Actions、Cron）
+  - 📖 最佳实践和灾难恢复计划
+  - 📖 安全注意事项和故障排除
+
+#### 备份内容
+
+```
+backups/YYYYMMDD_HHMMSS/
+├── cloud_run/          # Cloud Run 配置
+├── supabase/           # 数据库备份
+├── migrations/         # Migration 文件
+├── configs/            # 配置文件
+└── BACKUP_INFO.txt     # 备份元信息
+```
+
+#### 使用方法
+
+```bash
+# 执行完整备份
+cd backend_py
+./backup-all.sh
+
+# 恢复所有内容
+./restore-backup.sh backups/20260128_120000
+
+# 仅恢复数据库
+./restore-backup.sh backups/20260128_120000 --supabase
+```
+
+#### 修改文件
+
+- 🆕 **`backend_py/backup-all.sh`**: 完整备份脚本
+- 🆕 **`backend_py/restore-backup.sh`**: 恢复脚本
+- 🆕 **`docs/BACKUP_GUIDE.md`**: 备份指南文档
+
+---
+
 ## 1.3.23 (2026-01-27)
 
 ### 分享链接预览动态显示项目名称和说明
