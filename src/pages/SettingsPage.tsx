@@ -3,6 +3,7 @@
  * 支持项目隔离，根据URL参数加载对应项目的设置
  * 1.2.5: 添加tab切换功能
  * 1.2.54: 添加删除项目功能
+ * 1.3.19: 添加C端聊天窗口引用来源显示配置
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -39,11 +40,13 @@ export function SettingsPage() {
   
   // 1.2.0: 聊天配置状态
   // 1.3.18: 添加 performance_mode 字段
+  // 1.3.19: 添加引用来源显示配置
   const [chatConfig, setChatConfig] = useState<any>({
     avatar_url: '',
     performance_mode: 'fast', // 1.3.18: 默认快速模式
     welcome_message: { zh: '', en: '', ja: '' },
-    recommended_questions: { zh: [], en: [], ja: [] }
+    recommended_questions: { zh: [], en: [], ja: [] },
+    show_citation: true // 1.3.22: 是否显示引用来源（链接和面板）
   });
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>('');
@@ -84,12 +87,14 @@ export function SettingsPage() {
           setDescription(data.description || '');
           // 1.2.0: 加载聊天配置
           // 1.3.18: 添加 performance_mode 字段读取
+          // 1.3.19: 添加引用来源显示配置读取
           const config = data.chat_config || {};
           setChatConfig({
             avatar_url: config.avatar_url || '',
             performance_mode: config.performance_mode || 'fast', // 1.3.18: 默认快速模式
             welcome_message: config.welcome_message || { zh: '', en: '', ja: '' },
-            recommended_questions: config.recommended_questions || { zh: [], en: [], ja: [] }
+            recommended_questions: config.recommended_questions || { zh: [], en: [], ja: [] },
+            show_citation: config.show_citation !== false // 1.3.22: 默认显示
           });
           if (config.avatar_url) {
             setAvatarPreview(config.avatar_url);
@@ -111,12 +116,14 @@ export function SettingsPage() {
           setDescription(data.description || '');
           // 1.2.0: 加载聊天配置
           // 1.3.18: 添加 performance_mode 字段读取
+          // 1.3.19: 添加引用来源显示配置读取
           const config = data.chat_config || {};
           setChatConfig({
             avatar_url: config.avatar_url || '',
             performance_mode: config.performance_mode || 'fast', // 1.3.18: 默认快速模式
             welcome_message: config.welcome_message || { zh: '', en: '', ja: '' },
-            recommended_questions: config.recommended_questions || { zh: [], en: [], ja: [] }
+            recommended_questions: config.recommended_questions || { zh: [], en: [], ja: [] },
+            show_citation: config.show_citation !== false // 1.3.22: 默认显示
           });
           if (config.avatar_url) {
             setAvatarPreview(config.avatar_url);
@@ -368,6 +375,7 @@ export function SettingsPage() {
       
       // 1.2.0: 保存项目信息和聊天配置
       // 1.3.18: 添加 performance_mode 字段保存
+      // 1.3.19: 添加引用来源显示配置保存
       const { error } = await supabase
         .from('knowledge_bases')
         .update({
@@ -377,7 +385,8 @@ export function SettingsPage() {
             avatar_url: avatarUrl,
             performance_mode: chatConfig.performance_mode, // 1.3.18: 性能模式
             welcome_message: chatConfig.welcome_message,
-            recommended_questions: chatConfig.recommended_questions
+            recommended_questions: chatConfig.recommended_questions,
+            show_citation: chatConfig.show_citation // 1.3.22: 引用来源显示
           }
         })
         .eq('id', kb.id);
@@ -761,6 +770,47 @@ export function SettingsPage() {
                       {t('accurateModeDesc')}
                     </p>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 1.3.22: 引用来源显示配置（合并为单个开关） */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('citationDisplaySettings')}
+            </label>
+            <p className="text-xs text-gray-500 mb-3">
+              {t('citationDisplaySettingsHint')}
+            </p>
+            <div 
+              onClick={() => setChatConfig({ ...chatConfig, show_citation: !chatConfig.show_citation })}
+              className={`relative cursor-pointer rounded-lg border-2 p-4 transition-all hover:shadow-md ${
+                chatConfig.show_citation
+                  ? 'border-primary bg-primary/5'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                  chatConfig.show_citation
+                    ? 'border-primary bg-primary'
+                    : 'border-gray-300'
+                }`}>
+                  {chatConfig.show_citation && (
+                    <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <FileText className="w-4 h-4 text-primary" />
+                    <span className="font-medium text-gray-900">{t('showCitation')}</span>
+                  </div>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    {t('showCitationDesc')}
+                  </p>
                 </div>
               </div>
             </div>

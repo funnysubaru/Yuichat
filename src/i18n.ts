@@ -328,6 +328,12 @@ const resources = {
       viewSource: '查看来源',
       citationNote: '显示相关度最高的文档片段',
       
+      // 1.3.19: 引用来源显示配置
+      citationDisplaySettings: '引用来源显示设置',
+      citationDisplaySettingsHint: '配置C端聊天窗口中引用来源的显示方式，管理端的测试对话永远显示引用来源',
+      showCitation: '显示引用来源',
+      showCitationDesc: '在AI回复中显示引用来源链接，并可在右侧面板查看详细引用内容',
+      
       // 1.3.7: 知识库Banner 4步流程
       bannerTitle4Steps: '4步快速创建知识库',
       bannerSubtitle4Steps: '上传文件，网站URL',
@@ -697,6 +703,12 @@ const resources = {
       viewSource: 'ソースを表示',
       citationNote: '最も関連性の高いドキュメント断片を表示',
       
+      // 1.3.19: 引用ソース表示設定
+      citationDisplaySettings: '引用ソース表示設定',
+      citationDisplaySettingsHint: 'C端チャットウィンドウでの引用ソースの表示方法を設定、管理端のテストチャットは常に引用ソースを表示',
+      showCitation: '引用ソースを表示',
+      showCitationDesc: 'AI回答に引用ソースリンクを表示し、右側パネルで詳細な引用内容を確認可能',
+      
       // 1.3.7: ナレッジベースBanner 4ステップフロー
       bannerTitle4Steps: '4ステップでナレッジベースを作成',
       bannerSubtitle4Steps: 'ファイル、ウェブサイトURLをアップロード',
@@ -1065,6 +1077,12 @@ const resources = {
       relevanceScore: 'Relevance',
       viewSource: 'View Source',
       citationNote: 'Showing the most relevant document snippets',
+      
+      // 1.3.19: Citation display settings
+      citationDisplaySettings: 'Citation Display Settings',
+      citationDisplaySettingsHint: 'Configure how citation sources are displayed in the C-side chat window. Admin test chat always shows citations',
+      showCitation: 'Show Citations',
+      showCitationDesc: 'Display citation source links in AI responses with detailed panel on the right',
       
       // 1.3.7: Knowledge Base Banner 4-step flow
       bannerTitle4Steps: '4 Steps to Create Knowledge Base',

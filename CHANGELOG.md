@@ -1,5 +1,114 @@
 # Changelog
 
+## 1.3.22 (2026-01-27)
+
+### 优化引用来源显示配置
+
+将之前的两个引用来源配置项合并为一个统一的开关，简化配置流程。
+
+#### 变更内容
+
+- **配置合并**：将"显示引用来源链接"和"显示引用来源面板"合并为单一的"显示引用来源"开关
+- **提示更新**：在配置提示中明确说明"管理端的测试对话永远显示引用来源"
+- **字段变更**：`show_citation_link` + `show_citation_panel` → `show_citation`
+
+#### 修改文件
+
+- 📄 **`src/pages/SettingsPage.tsx`**：
+  - 将两个配置项合并为单一的 `show_citation` 开关
+  - 勾选即显示引用来源的链接和面板，取消勾选则都不显示
+  - 移除不再使用的 `Link` 和 `PanelRightOpen` 图标导入
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 将 `showCitationLink` 和 `showCitationPanel` 合并为 `showCitation`
+  - 简化条件判断逻辑，统一使用 `showCitation` 配置
+
+- 📄 **`src/i18n.ts`**：
+  - 更新提示文案，添加"管理端的测试对话永远显示引用来源"说明
+  - 将 `showCitationLink/showCitationLinkDesc` 和 `showCitationPanel/showCitationPanelDesc` 合并为 `showCitation/showCitationDesc`
+  - 支持中文、英文、日文三语言
+
+---
+
+## 1.3.21 (2026-01-27)
+
+### 新增C端聊天窗口引用来源显示配置
+
+在项目设置的对话设置中添加引用来源显示配置选项，可以控制C端聊天窗口中引用来源的显示方式。
+
+#### 配置选项
+
+1. **显示引用来源链接**：控制是否在AI回复的内容中显示"引用来源"链接标签
+2. **显示引用来源面板**：控制点击引用来源链接时，是否在右侧显示详细的引用来源面板
+
+#### 修改文件
+
+- 📄 **`src/pages/SettingsPage.tsx`**：
+  - 在对话设置Tab中添加引用来源显示配置区块
+  - 使用复选框卡片样式，与性能模式选择保持一致的设计风格
+  - 支持 `show_citation_link` 和 `show_citation_panel` 两个配置项
+  - 配置保存到 `chat_config` JSONB 字段中
+
+- 📄 **`src/components/ChatInterface.tsx`**：
+  - 在 `chatConfig` 状态类型中添加 `showCitationLink` 和 `showCitationPanel` 字段
+  - 从知识库配置中读取引用来源显示设置
+  - 根据配置控制引用来源链接和面板的显示
+  - **重要**：配置仅对C端公开分享页面生效，管理端测试对话永远显示引用来源
+  - 修复：使用函数式更新保留引用来源配置，防止在更新推荐问题时丢失配置
+
+- 📄 **`src/i18n.ts`**：
+  - 新增 `citationDisplaySettings`：引用来源显示设置标题
+  - 新增 `citationDisplaySettingsHint`：引用来源显示设置提示
+  - 新增 `showCitationLink`：显示引用来源链接
+  - 新增 `showCitationLinkDesc`：显示引用来源链接描述
+  - 新增 `showCitationPanel`：显示引用来源面板
+  - 新增 `showCitationPanelDesc`：显示引用来源面板描述
+  - 支持中文、英文、日文三语言
+
+---
+
+## 1.3.20 (2026-01-27)
+
+### 新增 RAG 回复精度评估工具
+
+使用 RAGAS 框架和 LLM-as-Judge 方法对知识库问答质量进行评估。
+
+#### 新增文件
+
+- 📄 **`backend_py/ragas_eval.py`**：
+  - RAGAS 评估脚本（使用本地向量数据库）
+  - 支持 faithfulness、answer_relevancy、context_precision、context_recall 四个维度
+
+- 📄 **`backend_py/ragas_eval_api.py`**：
+  - 通过 API 调用的评估脚本
+  - LLM-as-Judge 评分（准确性、完整性、相关性、忠实度、可读性）
+  - 关键词命中率检测
+  - 自动生成评估报告
+
+- 📄 **`backend_py/test_data/houjinzei_eval_dataset.json`**：
+  - 法人税法知识库评估测试集（Golden Dataset）
+  - 包含10个测试用例，覆盖不同难度和类别
+
+#### 更新依赖
+
+- 📄 **`backend_py/requirements.txt`**：
+  - 新增 `ragas` (RAGAS 评估框架)
+  - 新增 `datasets` (Hugging Face datasets)
+
+#### 法人税法评估结果
+
+| 维度 | 评分 | 等级 |
+|------|------|------|
+| 准确性 | 4.20/5 | 🟢 良好 |
+| 完整性 | 4.00/5 | 🟢 良好 |
+| 相关性 | 4.60/5 | ✅ 优秀 |
+| 忠实度 | 4.00/5 | 🟢 良好 |
+| 可读性 | 4.40/5 | 🟢 良好 |
+| **综合** | **4.24/5** | **🟢 良好** |
+| 关键词命中率 | 88.33% | - |
+
+---
+
 ## 1.3.19 (2026-01-27)
 
 ### 社交媒体预览默认语言改为日文

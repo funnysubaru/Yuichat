@@ -15,6 +15,7 @@
  * 1.2.58: 修复生产环境每次点击测试对话不刷新聊天的问题，首次进入/chat时也需要清空消息
  * 1.3.0: 新增 follow_up 推荐问题显示功能，支持后续问题推荐
  * 1.3.11: 新增引用来源展示功能，支持查看AI回答的文档来源
+ * 1.3.19: 支持引用来源显示配置（可配置是否显示引用来源链接和面板）
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -109,10 +110,12 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
   const [isTyping, setIsTyping] = useState(false);
   const [currentKb, setCurrentKb] = useState<any>(null);
   // 1.2.0: 聊天配置状态
+  // 1.3.19: 添加引用来源显示配置
   const [chatConfig, setChatConfig] = useState<{
     avatarUrl: string;
     welcomeMessage: string;
     recommendedQuestions: string[];
+    showCitation?: boolean; // 1.3.22: 是否显示引用来源（链接和面板）
   } | null>(null);
   // 1.2.12: 初始化为true，避免首次渲染显示默认问题
   // 如果知识库没有配置的推荐问题，需要从API获取，应该显示loading状态
@@ -208,10 +211,12 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         const recommendedQuestions = config.recommended_questions?.[lang] || [];
         
         // 1.2.57: 立即设置 chatConfig，让界面先显示欢迎语
+        // 1.3.19: 添加引用来源显示配置
         setChatConfig({
           avatarUrl,
           welcomeMessage,
-          recommendedQuestions: recommendedQuestions.length > 0 ? recommendedQuestions.slice(0, 3) : []
+          recommendedQuestions: recommendedQuestions.length > 0 ? recommendedQuestions.slice(0, 3) : [],
+          showCitation: config.show_citation !== false // 1.3.22: 默认显示
         });
         
         if (recommendedQuestions.length > 0) {
@@ -312,12 +317,14 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         
         // 1.2.12: 立即设置chatConfig，确保欢迎语和头像立即显示
         // 1.2.39: 保留已有的推荐问题，避免覆盖API返回的结果
+        // 1.3.22: 添加引用来源显示配置
         if (recommendedQuestions.length > 0) {
           // 如果有配置的推荐问题，直接设置完整的chatConfig
           setChatConfig({
             avatarUrl,
             welcomeMessage,
-            recommendedQuestions: recommendedQuestions.slice(0, 3)
+            recommendedQuestions: recommendedQuestions.slice(0, 3),
+            showCitation: config.show_citation !== false // 1.3.22: 默认显示
           });
           setLoadingQuestions(false);
         } else {
@@ -326,7 +333,8 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
           setChatConfig(prev => ({
             avatarUrl,
             welcomeMessage,
-            recommendedQuestions: prev?.recommendedQuestions || []
+            recommendedQuestions: prev?.recommendedQuestions || [],
+            showCitation: config.show_citation !== false // 1.3.22: 默认显示
           }));
         }
         
@@ -598,11 +606,13 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
     
     if (recommendedQuestions.length === 0) {
       // 1.2.56: 立即设置 chatConfig（欢迎语和头像），让界面先显示
-      setChatConfig({
+      // 1.3.22: 使用函数式更新保留现有配置
+      setChatConfig(prev => ({
+        showCitation: prev?.showCitation,
         avatarUrl,
         welcomeMessage,
         recommendedQuestions: []
-      });
+      }));
       
       // 1.2.56: 标记高频问题正在加载（用于显示骨架屏）
       setLoadingQuestions(true);
@@ -615,11 +625,13 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
         // 1.2.11: 标记已加载
         configLoadedRef.current = kb.id;
         // 1.2.12: 更新chatConfig，添加推荐问题
-        setChatConfig({
+        // 1.3.22: 使用函数式更新保留现有配置
+        setChatConfig(prev => ({
+          showCitation: prev?.showCitation,
           avatarUrl,
           welcomeMessage,
           recommendedQuestions: questions.slice(0, 3)
-        });
+        }));
         if (import.meta.env.DEV) {
           console.log('[DEBUG] chatConfig updated with questions:', questions.slice(0, 3));
         }
@@ -636,11 +648,13 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       // 1.2.11: 标记已加载
       configLoadedRef.current = kb.id;
       // 1.2.12: 如果有配置的推荐问题，更新chatConfig（如果已经设置过，这里只是更新推荐问题）
-      setChatConfig({
+      // 1.3.22: 使用函数式更新保留现有配置
+      setChatConfig(prev => ({
+        showCitation: prev?.showCitation,
         avatarUrl,
         welcomeMessage,
         recommendedQuestions: recommendedQuestions.slice(0, 3)
-      });
+      }));
       // 1.2.12: 如果有配置的推荐问题，不需要从API获取，关闭loading状态
       setLoadingQuestions(false);
     }
@@ -893,8 +907,9 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
       });
       
       // 1.3.11: 更新 citations 状态，当AI表示没有找到相关信息时不显示引用面板
+      // 1.3.22: 根据配置控制是否自动打开引用来源面板（仅C端公开模式受配置控制，管理端永远显示）
       setCurrentCitations(citations);
-      if (citations.length > 0 && !isNoContextAnswer(answerContent)) {
+      if (citations.length > 0 && !isNoContextAnswer(answerContent) && (!isPublicMode || chatConfig?.showCitation !== false)) {
         setShowCitationPanel(true);
       }
 
@@ -1128,7 +1143,8 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                     citations: citations,
                   });
                   // 1.3.11: 如果有引用且AI没有表示没有找到相关信息，自动显示引用面板
-                  if (citations.length > 0 && !isNoContextAnswer(fullAnswer)) {
+                  // 1.3.22: 根据配置控制是否自动打开引用来源面板（仅C端公开模式受配置控制，管理端永远显示）
+                  if (citations.length > 0 && !isNoContextAnswer(fullAnswer) && (!isPublicMode || chatConfig?.showCitation !== false)) {
                     setShowCitationPanel(true);
                   }
                   if (import.meta.env.DEV) {
@@ -1543,14 +1559,16 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                     <>
                       <MarkdownRenderer content={message.content} isStreaming={message.status === 'streaming'} />
                       {/* 1.3.11: 引用来源标签 - 当AI表示没有找到相关信息时不显示 */}
-                      {message.citations && message.citations.length > 0 && message.status === 'completed' && !isNoContextAnswer(message.content) && (
+                      {/* 1.3.22: 根据配置控制是否显示引用来源（仅C端公开模式受配置控制，管理端永远显示） */}
+                      {message.citations && message.citations.length > 0 && message.status === 'completed' && !isNoContextAnswer(message.content) && (!isPublicMode || chatConfig?.showCitation !== false) && (
                         <div className="mt-3 pt-3 border-t border-gray-200">
                           <button
                             onClick={() => {
+                              // 1.3.22: 点击引用来源链接时打开面板
                               setCurrentCitations(message.citations || []);
                               setShowCitationPanel(true);
                             }}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary text-sm rounded-full hover:bg-primary/20 transition-colors"
+                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary text-sm rounded-full transition-colors hover:bg-primary/20 cursor-pointer"
                           >
                             <FileText className="w-4 h-4" />
                             <span>{t('citationSources') || '引用来源'}: {message.citations.length}</span>
