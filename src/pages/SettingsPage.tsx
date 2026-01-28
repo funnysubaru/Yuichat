@@ -191,25 +191,27 @@ export function SettingsPage() {
   };
 
   // 1.2.0: 上传头像到Storage
+  // 1.3.28: 改用独立的 avatars bucket（公开访问）
   const handleAvatarUpload = async (file: File): Promise<string> => {
     if (!kb) throw new Error('项目不存在');
     
     const fileExt = file.name.split('.').pop();
     const fileName = `avatar.${fileExt}`;
-    const filePath = `${kb.id}/avatars/${fileName}`;
+    // 1.3.28: 路径格式：{kb_id}/avatar.{ext}
+    const filePath = `${kb.id}/${fileName}`;
     
     setIsUploadingAvatar(true);
     try {
-      // 上传到 Supabase Storage
+      // 1.3.28: 上传到独立的 avatars bucket
       const { error: uploadError } = await supabase.storage
-        .from('knowledge-base-files')
+        .from('avatars')
         .upload(filePath, file, { upsert: true });
       
       if (uploadError) throw uploadError;
       
-      // 获取公开URL
+      // 1.3.28: 获取公开URL（avatars bucket 是公开的）
       const { data: { publicUrl } } = supabase.storage
-        .from('knowledge-base-files')
+        .from('avatars')
         .getPublicUrl(filePath);
       
       return publicUrl;
@@ -442,13 +444,11 @@ export function SettingsPage() {
 
   // 1.2.60: 将loading动画居中到页面正中
   // 1.2.58: 添加动态点点点效果
+  // 1.3.27: 页面loading只显示YUI动画，移除"AI正在思考中"文字
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
-          <span className="text-gray-600 text-lg thinking-dots">{t('aiThinking')}</span>
-        </div>
+        <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
       </div>
     );
   }

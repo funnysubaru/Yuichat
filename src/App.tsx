@@ -68,13 +68,11 @@ function App() {
 
   // 1.1.5: 加载中显示加载状态
   // 1.2.58: 添加动态点点点效果
+  // 1.3.27: 页面loading只显示YUI动画，移除"AI正在思考中"文字
   if (isLoading && isSupabaseAvailable) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
-          <span className="text-gray-600 text-lg thinking-dots">{t('aiThinking')}</span>
-        </div>
+        <span className="inline-block text-primary font-semibold yui-loading-animation text-2xl">YUI</span>
       </div>
     );
   }

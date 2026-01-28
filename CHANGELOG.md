@@ -1,5 +1,132 @@
 # Changelog
 
+## 1.3.29 (2026-01-28)
+
+### 优化 - C端聊天页面loading也移除思考文字
+
+#### 改动内容
+
+- C端聊天页面的页面loading也只显示YUI动画，移除"AI正在思考中"文字
+
+#### 修改文件
+
+- `src/pages/PublicChatPage.tsx` - 移除页面loading中的aiThinking文字
+- `src/pages/SharePage.tsx` - 移除页面loading中的aiThinking文字
+
+#### 说明
+
+- "AI正在思考中"文字现在仅在以下场景显示：
+  - 测试对话中AI回复等待时 (`KnowledgeBasePage.tsx`)
+  - 聊天界面中AI回复等待时 (`ChatInterface.tsx`)
+
+---
+
+## 1.3.28 (2026-01-28)
+
+### 修复 - 头像上传后刷新无法显示预览、测试对话机器人icon不显示
+
+#### 问题描述
+
+- 头像上传后刷新页面，预览图片无法显示
+- 测试对话中的机器人头像没有变成上传的头像
+- 外部分享页面的机器人头像也无法显示
+
+#### 根本原因
+
+- `knowledge-base-files` bucket 是**私有的**（在 `20260122000000_make_storage_private.sql` 中设为私有）
+- 但头像上传后使用 `getPublicUrl()` 获取公开URL
+- 私有bucket的公开URL无法直接访问，所以头像无法显示
+
+#### 解决方案
+
+创建独立的 `avatars` bucket，专门用于存储头像：
+
+- **新bucket特性**：
+  - 公开访问（`public: true`）
+  - 2MB 文件大小限制
+  - 仅允许图片类型（png, jpeg, jpg, gif, webp, svg）
+
+- **RLS策略**：
+  - 认证用户可以上传/更新/删除自己知识库的头像
+  - 任何人可以查看头像（用于聊天界面和外部分享）
+
+#### 修改文件
+
+- `supabase/migrations/20260128000002_create_avatars_bucket.sql` - 新建迁移文件
+- `src/pages/SettingsPage.tsx` - 修改头像上传代码，使用新的 avatars bucket
+
+#### 技术细节
+
+```sql
+-- 创建公开的头像bucket
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('avatars', 'avatars', true, 2097152, ARRAY['image/png', 'image/jpeg', ...]);
+
+-- 公开读取策略
+CREATE POLICY "Public can view avatars" ON storage.objects
+FOR SELECT TO public
+USING (bucket_id = 'avatars');
+```
+
+---
+
+## 1.3.27 (2026-01-28)
+
+### 优化 - 页面loading只显示YUI动画
+
+#### 改动内容
+
+- "AI正在思考中"的文字仅在测试对话和C端聊天的loading中使用
+- 页面loading（App、Dashboard、AllProjects、Settings、ConversationData）只显示YUI动画，移除思考文字
+
+#### 修改文件
+
+- `src/App.tsx` - 移除页面loading中的aiThinking文字
+- `src/pages/DashboardPage.tsx` - 移除页面loading中的aiThinking文字
+- `src/pages/ConversationDataPage.tsx` - 移除页面loading中的aiThinking文字
+- `src/pages/AllProjectsPage.tsx` - 移除页面loading中的aiThinking文字
+- `src/pages/SettingsPage.tsx` - 移除页面loading中的aiThinking文字
+
+#### 保留aiThinking的位置
+
+- `src/pages/KnowledgeBasePage.tsx` - 测试对话loading
+- `src/pages/PublicChatPage.tsx` - C端聊天loading
+- `src/pages/SharePage.tsx` - 分享页面聊天loading
+- `src/components/ChatInterface.tsx` - 聊天界面loading
+
+---
+
+## 1.3.26 (2026-01-28)
+
+### 修复 - 本地头像上传失败
+
+#### 问题描述
+
+- 在项目设置页面上传AI头像时报错："StorageApiError: new row violates row-level security policy"
+- 根本原因：Storage RLS策略缺少UPDATE权限，而头像上传使用 `upsert: true`（如果文件已存在则更新）
+
+#### 修复内容
+
+- **添加Storage UPDATE策略** (`supabase/migrations/20260128_add_storage_update_policy.sql`)：
+  - 新增 "Users can update own files" 策略
+  - 允许用户更新自己知识库中的文件
+  - 与现有INSERT、SELECT、DELETE策略保持一致的权限检查逻辑
+
+#### 技术细节
+
+```sql
+CREATE POLICY "Users can update own files" ON storage.objects
+FOR UPDATE TO authenticated
+USING (
+  bucket_id = 'knowledge-base-files'
+  AND (storage.foldername(name))[1] IN (
+    SELECT id::text FROM knowledge_bases WHERE user_id = auth.uid()
+  )
+)
+```
+
+---
+
 ## 1.3.25 (2026-01-28)
 
 ### UI优化 - Loading动画增强
