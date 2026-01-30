@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3.35 (2026-01-30)
+
+### Bug修复 - QA回答内容不显示
+
+#### 问题原因
+
+当后端直接返回 `{answer: "555", done: true}` 而没有先发送 `chunk` 事件时（如QA匹配命中缓存），前端不会更新消息内容，导致回答显示为空。
+
+#### 修复内容
+
+1. **ChatInterface.tsx**:
+   - 在收到 `done && answer` 时，确保消息内容被设置为完整的 `fullAnswer`
+   - 修复QA匹配时回答内容不显示的问题
+
+#### 性能优化
+
+1. **Supabase向量索引**:
+   - 为所有vecs向量表创建HNSW索引
+   - 修复 "Query does not have a covering index for cosine_distance" 警告
+   - 显著提升向量查询速度
+
 ## 1.3.33 (2026-01-28)
 
 ### Bug修复 - QA匹配和知识库查询

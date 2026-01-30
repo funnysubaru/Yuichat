@@ -1134,6 +1134,11 @@ export function ChatInterface({ language = 'zh', onScroll, externalKb, isPublicM
                 fullContext = parsed.context || '';
                 const fullAnswer = parsed.answer || '';
                 
+                // 1.3.35: 确保消息内容为完整答案（修复QA匹配时没有chunk导致内容为空的问题）
+                updateMessage(assistantMessageId, {
+                  content: fullAnswer,
+                });
+                
                 // 1.3.11: 处理 citations 引用来源
                 if (parsed.citations && Array.isArray(parsed.citations)) {
                   const citations = parsed.citations as Citation[];
