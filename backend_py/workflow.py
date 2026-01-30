@@ -841,14 +841,15 @@ Reference Materials:
     ])
     
     # 1.3.18: 根据 performance_mode 选择模型
-    # fast: gpt-4o-mini / gemini-1.5-flash（响应快，成本低）
-    # accurate: gpt-4o / gemini-1.5-pro（质量高，响应慢）
+    # fast: gpt-4o-mini / gemini-2.5-flash（响应快，成本低）
+    # accurate: gpt-4o / gemini-2.5-pro（质量高，响应慢）
     performance_mode = state.get('performance_mode', 'fast')
     
     # 1.3.37: 根据 LLM_PROVIDER 选择模型
+    # 1.3.39: 更新 Gemini 模型到 2.5 版本 (gemini-2.5-flash/pro)
     if LLM_PROVIDER == "gemini" and GEMINI_AVAILABLE:
         # 使用 Google Gemini
-        model = "gemini-1.5-flash" if performance_mode == 'fast' else "gemini-1.5-pro"
+        model = "gemini-2.5-flash" if performance_mode == 'fast' else "gemini-2.5-pro"
         if os.getenv("ENV") == "development":
             print(f"🤖 使用Gemini模型: {model} (performance_mode: {performance_mode})")
         llm = ChatGoogleGenerativeAI(model=model, streaming=True)
@@ -1178,14 +1179,15 @@ Reference Materials:
     ])
     
     # 1.3.18: 根据 performance_mode 选择模型
-    # fast: gpt-4o-mini / gemini-1.5-flash（响应快，成本低）
-    # accurate: gpt-4o / gemini-1.5-pro（质量高，响应慢）
+    # fast: gpt-4o-mini / gemini-2.5-flash（响应快，成本低）
+    # accurate: gpt-4o / gemini-2.5-pro（质量高，响应慢）
     performance_mode = state.get('performance_mode', 'fast')
     
     # 1.3.37: 根据 LLM_PROVIDER 选择模型
+    # 1.3.39: 更新 Gemini 模型到 2.5 版本 (gemini-2.5-flash/pro)
     if LLM_PROVIDER == "gemini" and GEMINI_AVAILABLE:
         # 使用 Google Gemini
-        model = "gemini-1.5-flash" if performance_mode == 'fast' else "gemini-1.5-pro"
+        model = "gemini-2.5-flash" if performance_mode == 'fast' else "gemini-2.5-pro"
         if os.getenv("ENV") == "development":
             print(f"🤖 [Stream] 使用Gemini模型: {model} (performance_mode: {performance_mode})")
         llm = ChatGoogleGenerativeAI(model=model, streaming=True)

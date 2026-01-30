@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.2.45 (2026-01-30)
+
+### 修复 - 防止 ChromeDriver 僵尸进程
+
+#### 问题
+在本地开发环境中，如果 URL 爬取过程中发生异常，ChromeDriver 进程可能不会被正确关闭，导致僵尸进程残留。
+
+#### 解决方案
+在 `crawler.py` 的 `SeleniumChromeURLLoader.load()` 方法中添加 `try-finally` 块，确保 `driver.quit()` 总是被调用，无论是否发生异常。
+
+#### 修改文件
+- `backend_py/crawler.py`: 添加 try-finally 确保 WebDriver 正确关闭
+
+#### 说明
+- 生产环境（Cloud Run）由于容器生命周期管理，风险较低
+- 本地开发环境（macOS）如果进程卡住，只能通过重启电脑清理僵尸进程
+
+## 1.3.39 (2026-01-30)
+
+### 更新 - Gemini 模型升级到 2.5 版本
+
+将 Gemini 模型版本更新到最新的 2.5：
+- `gemini-2.0-flash` → `gemini-2.5-flash`
+- `gemini-2.0-pro` → `gemini-2.5-pro`
+
+#### 修改文件
+- `backend_py/workflow.py`: 更新 `chat_node` 和 `chat_node_stream` 函数中的模型名称
+
+## 1.3.38 (2026-01-30)
+
+### 修复 - Gemini 模型版本更新
+
+#### 问题
+`gemini-1.5-flash` 和 `gemini-1.5-pro` 模型已不再可用，API 返回 404 NOT_FOUND 错误。
+
+#### 解决方案
+将 Gemini 模型版本更新到 2.0：
+- `gemini-1.5-flash` → `gemini-2.0-flash`
+- `gemini-1.5-pro` → `gemini-2.0-pro`
+
+#### 修改文件
+- `backend_py/workflow.py`: 更新 `chat_node` 和 `chat_node_stream` 函数中的模型名称
+
 ## 1.3.37 (2026-01-30)
 
 ### 新功能 - Google Gemini LLM支持
@@ -17,8 +60,8 @@
 2. **模型映射**:
    | 模式 | OpenAI | Gemini |
    |------|--------|--------|
-   | fast | gpt-4o-mini | gemini-1.5-flash |
-   | accurate | gpt-4o | gemini-1.5-pro |
+   | fast | gpt-4o-mini | gemini-2.5-flash |
+   | accurate | gpt-4o | gemini-2.5-pro |
 
 3. **依赖更新**:
    - 添加 `langchain-google-genai`

@@ -172,108 +172,117 @@ class SeleniumChromeURLLoader(BaseLoader):
 
         docs: List[Document] = list()
         driver = self._get_driver()
-        if os.getenv("ENV") == "development":
-            logger.info(f"Selenium driver= {driver}")
-            logger.info(f"load urls= {self.urls}")
         
-        for url in self.urls:
-            try:
-                if os.getenv("ENV") == "development":
-                    logger.info(f"[CORE_CALL] load url= {url}")
-                driver.get(url)
-                # 1.1.12: 增加等待时间，确保 JavaScript 动态内容完全加载
-                # 对于 Vue.js 等 SPA 应用，需要更长的等待时间
-                time.sleep(8)  # 从3秒增加到8秒，确保动态内容加载完成
-                
-                # 1.1.12: 尝试等待页面完全加载（等待 body 中有实际内容）
+        # 1.2.45: 使用 try-finally 确保 driver 总是被正确关闭，防止僵尸进程
+        try:
+            if os.getenv("ENV") == "development":
+                logger.info(f"Selenium driver= {driver}")
+                logger.info(f"load urls= {self.urls}")
+            
+            for url in self.urls:
                 try:
-                    from selenium.webdriver.support.ui import WebDriverWait
-                    from selenium.webdriver.support import expected_conditions as EC
-                    from selenium.webdriver.common.by import By
-                    # 等待 body 中有文本内容（至少100个字符）
-                    WebDriverWait(driver, 10).until(
-                        lambda d: len(d.find_element(By.TAG_NAME, "body").text) > 100
-                    )
-                except:
-                    # 如果等待超时，继续使用固定等待时间后的内容
-                    pass
-                
-                title = driver.title
-                page_content = driver.page_source
-                
-                # 1.1.12: 尝试获取编辑器内容（如果是 Markdown 编辑器）
-                try:
-                    # 使用 JavaScript 获取所有编辑器内容（包括 Vue 渲染的内容）
-                    editor_content_js = """
-                    var editors = [];
-                    // 获取所有可能的编辑器元素
-                    var selectors = ['textarea', '[contenteditable="true"]', '.vditor-sv', '.vditor-textarea', '.editor', '#editor'];
-                    selectors.forEach(function(selector) {
-                        document.querySelectorAll(selector).forEach(function(el) {
-                            var text = el.value || el.textContent || el.innerText || '';
-                            if (text && text.trim().length > 50) {
-                                editors.push({
-                                    tag: el.tagName,
-                                    text: text,
-                                    id: el.id || '',
-                                    className: el.className || ''
-                                });
-                            }
-                        });
-                    });
-                    return editors;
-                    """
-                    editor_contents = driver.execute_script(editor_content_js)
+                    if os.getenv("ENV") == "development":
+                        logger.info(f"[CORE_CALL] load url= {url}")
+                    driver.get(url)
+                    # 1.1.12: 增加等待时间，确保 JavaScript 动态内容完全加载
+                    # 对于 Vue.js 等 SPA 应用，需要更长的等待时间
+                    time.sleep(8)  # 从3秒增加到8秒，确保动态内容加载完成
                     
-                    if editor_contents:
-                        # 合并所有编辑器内容
-                        all_editor_text = "\n\n".join([ed['text'] for ed in editor_contents if ed['text']])
-                        if all_editor_text and len(all_editor_text) > 100:
-                            if os.getenv("ENV") == "development":
-                                logger.info(f"找到编辑器内容，长度: {len(all_editor_text)} 字符")
-                            # 将编辑器内容添加到页面源码中，优先使用编辑器内容
-                            page_content = f"{page_content}\n<!-- Editor Content -->\n{all_editor_text}"
-                except Exception as editor_error:
+                    # 1.1.12: 尝试等待页面完全加载（等待 body 中有实际内容）
+                    try:
+                        from selenium.webdriver.support.ui import WebDriverWait
+                        from selenium.webdriver.support import expected_conditions as EC
+                        from selenium.webdriver.common.by import By
+                        # 等待 body 中有文本内容（至少100个字符）
+                        WebDriverWait(driver, 10).until(
+                            lambda d: len(d.find_element(By.TAG_NAME, "body").text) > 100
+                        )
+                    except:
+                        # 如果等待超时，继续使用固定等待时间后的内容
+                        pass
+                    
+                    title = driver.title
+                    page_content = driver.page_source
+                    
+                    # 1.1.12: 尝试获取编辑器内容（如果是 Markdown 编辑器）
+                    try:
+                        # 使用 JavaScript 获取所有编辑器内容（包括 Vue 渲染的内容）
+                        editor_content_js = """
+                        var editors = [];
+                        // 获取所有可能的编辑器元素
+                        var selectors = ['textarea', '[contenteditable="true"]', '.vditor-sv', '.vditor-textarea', '.editor', '#editor'];
+                        selectors.forEach(function(selector) {
+                            document.querySelectorAll(selector).forEach(function(el) {
+                                var text = el.value || el.textContent || el.innerText || '';
+                                if (text && text.trim().length > 50) {
+                                    editors.push({
+                                        tag: el.tagName,
+                                        text: text,
+                                        id: el.id || '',
+                                        className: el.className || ''
+                                    });
+                                }
+                            });
+                        });
+                        return editors;
+                        """
+                        editor_contents = driver.execute_script(editor_content_js)
+                        
+                        if editor_contents:
+                            # 合并所有编辑器内容
+                            all_editor_text = "\n\n".join([ed['text'] for ed in editor_contents if ed['text']])
+                            if all_editor_text and len(all_editor_text) > 100:
+                                if os.getenv("ENV") == "development":
+                                    logger.info(f"找到编辑器内容，长度: {len(all_editor_text)} 字符")
+                                # 将编辑器内容添加到页面源码中，优先使用编辑器内容
+                                page_content = f"{page_content}\n<!-- Editor Content -->\n{all_editor_text}"
+                    except Exception as editor_error:
+                        if os.getenv("ENV") == "development":
+                            logger.warning(f"获取编辑器内容失败: {editor_error}")
                     if os.getenv("ENV") == "development":
-                        logger.warning(f"获取编辑器内容失败: {editor_error}")
+                        logger.info(f"load url end")
+                    
+                    # 1.1.12: 修复 partition_html 处理某些网页时的错误
+                    # 如果直接传 text 失败，按照 chatmax 逻辑应该标记为解析失败
+                    try:
+                        elements = partition_html(text=page_content)
+                    except Exception as parse_error:
+                        if os.getenv("ENV") == "development":
+                            logger.warning(f"partition_html failed: {parse_error}")
+                        # 1.1.12: 按照 chatmax 逻辑，partition_html 失败应该标记为解析失败
+                        # 不再使用 BeautifulSoup 回退，直接创建错误文档
+                        error_reason = f"partition_html 处理失败 - {str(parse_error)}"
+                        docs.append(Document(
+                            page_content=f"解析失败: {error_reason}\n原始URL: {url}",
+                            metadata={
+                                "source": url,
+                                "title": url,
+                                "url": url,
+                                "error": error_reason
+                            }
+                        ))
+                        continue
+                    
+                    text = "\n\n".join(
+                        [replace_special_char(str(el).strip()) for el in elements if el is not None])
+                    metadata = {"source": url,
+                                "title": title}
+                    if os.getenv("ENV") == "development":
+                        logger.info(f"[CORE_CALL] url data, content={text}, meta={metadata}")
+                    docs.append(Document(page_content=text, metadata=metadata))
+                except Exception as e:
+                    if self.continue_on_failure:
+                        if os.getenv("ENV") == "development":
+                            logger.error(f"[CORE_CALL] Error fetching or processing {url}, exception: {e}")
+                    else:
+                        raise e
+        finally:
+            # 1.2.45: 确保 driver 总是被关闭，防止僵尸进程
+            try:
+                driver.quit()
+            except Exception as quit_error:
                 if os.getenv("ENV") == "development":
-                    logger.info(f"load url end")
-                
-                # 1.1.12: 修复 partition_html 处理某些网页时的错误
-                # 如果直接传 text 失败，按照 chatmax 逻辑应该标记为解析失败
-                try:
-                    elements = partition_html(text=page_content)
-                except Exception as parse_error:
-                    if os.getenv("ENV") == "development":
-                        logger.warning(f"partition_html failed: {parse_error}")
-                    # 1.1.12: 按照 chatmax 逻辑，partition_html 失败应该标记为解析失败
-                    # 不再使用 BeautifulSoup 回退，直接创建错误文档
-                    error_reason = f"partition_html 处理失败 - {str(parse_error)}"
-                    docs.append(Document(
-                        page_content=f"解析失败: {error_reason}\n原始URL: {url}",
-                        metadata={
-                            "source": url,
-                            "title": url,
-                            "url": url,
-                            "error": error_reason
-                        }
-                    ))
-                    continue
-                
-                text = "\n\n".join(
-                    [replace_special_char(str(el).strip()) for el in elements if el is not None])
-                metadata = {"source": url,
-                            "title": title}
-                if os.getenv("ENV") == "development":
-                    logger.info(f"[CORE_CALL] url data, content={text}, meta={metadata}")
-                docs.append(Document(page_content=text, metadata=metadata))
-            except Exception as e:
-                if self.continue_on_failure:
-                    if os.getenv("ENV") == "development":
-                        logger.error(f"[CORE_CALL] Error fetching or processing {url}, exception: {e}")
-                else:
-                    raise e
-        driver.quit()
+                    logger.warning(f"Error closing driver: {quit_error}")
         return docs
 
 
