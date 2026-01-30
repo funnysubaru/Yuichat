@@ -1,11 +1,9 @@
-# 1.2.46: YUIChat Python 后端 Dockerfile for GCP Cloud Run
+# 1.3.34: YUIChat Python 后端 Dockerfile for GCP Cloud Run
 # 优化构建速度：
-# - 使用 BuildKit 缓存挂载加速 pip 安装
 # - 优化层顺序，最大化缓存命中
 # - 分离稳定依赖和频繁变更依赖
 
-# syntax=docker/dockerfile:1.4
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -46,10 +44,8 @@ ENV CHROMIUM_PATH=/usr/bin/chromium
 # 只有 requirements.txt 变化时才会重新安装依赖
 COPY requirements.txt .
 
-# 1.2.46: 使用 BuildKit 缓存挂载加速 pip 安装
-# 这样即使 requirements.txt 没变化，pip 缓存也能在多次构建间复用
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip && \
+# 1.3.34: 安装 Python 依赖
+RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # 1.2.46: 最后复制应用代码（这层变化最频繁，放在最后）
