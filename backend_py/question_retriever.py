@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 # LLM 和向量化
 from langchain_openai import OpenAIEmbeddings
 
+# 1.3.36: 导入Embedding缓存模块
+from embedding_cache import embed_query_with_cache
+
 # Supabase 客户端
 from supabase import create_client, Client
 
@@ -136,10 +139,9 @@ async def retrieve_similar_questions(
             logger.info(f"Questions collection {questions_collection_name} not found, returning empty results")
             return (results, query_vector) if return_query_embedding else (results, None)
         
-        # 生成查询向量
-        embeddings_model = OpenAIEmbeddings()
+        # 1.3.36: 使用缓存版本的embed_query，避免重复调用OpenAI API
         query_vector = await asyncio.to_thread(
-            embeddings_model.embed_query, query
+            embed_query_with_cache, query
         )
         
         # 执行相似度搜索

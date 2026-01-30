@@ -15,6 +15,9 @@ from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 from pathlib import Path
 
+# 1.3.36: 导入Embedding缓存模块
+from embedding_cache import embed_query_with_cache
+
 # 1.3.31: 确保环境变量已加载（解决导入顺序问题）
 # 获取当前文件所在目录
 _current_dir = Path(__file__).parent
@@ -222,8 +225,8 @@ class QAService:
             if os.getenv("ENV") == "development":
                 print(f"🔍 Matching QA in collection: {get_qa_collection_name(collection_name)}")
             
-            # 生成查询向量
-            query_vector = self.embeddings.embed_query(query)
+            # 1.3.36: 使用缓存版本的embed_query，避免重复调用OpenAI API
+            query_vector = embed_query_with_cache(query)
             
             # 查询最相似的QA
             results = collection.query(

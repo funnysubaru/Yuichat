@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.3.36 (2026-01-30)
+
+### 性能优化 - Embedding请求级缓存
+
+#### 问题原因
+
+每次聊天请求调用了4次OpenAI Embedding API（缓存检查、QA匹配、RAG检索、推荐问题），导致响应延迟高达20+秒。
+
+#### 优化内容
+
+1. **新增 `embedding_cache.py`**:
+   - 实现请求级别的Embedding缓存
+   - 使用contextvars实现请求隔离
+   - 同一请求中相同查询只调用1次Embedding API
+
+2. **修改的模块**:
+   - `app.py`: 添加EmbeddingCacheMiddleware中间件
+   - `qa_cache.py`: 使用 `embed_query_with_cache`
+   - `qa_service.py`: 使用 `embed_query_with_cache`
+   - `workflow.py`: 使用 `embed_query_with_cache`
+   - `question_retriever.py`: 使用 `embed_query_with_cache`
+
+#### 预计效果
+
+| 指标 | 优化前 | 优化后 |
+|------|--------|--------|
+| Embedding调用次数 | 4次/请求 | 1次/请求 |
+| Embedding延迟 | ~2000ms | ~500ms |
+| 总响应时间 | ~20秒 | ~5-8秒 |
+| API费用 | 100% | 25% |
+
 ## 1.3.35 (2026-01-30)
 
 ### Bug修复 - QA回答内容不显示

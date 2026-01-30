@@ -34,6 +34,9 @@ from qa_cache import check_cache, save_to_cache, clear_cache_by_kb
 # 1.3.30: 导入QA问答服务模块
 from qa_service import QAService
 
+# 1.3.36: 导入Embedding缓存模块（用于请求级缓存，避免重复调用）
+from embedding_cache import EmbeddingCacheMiddleware, init_request_cache, get_cache_stats
+
 # 1.2.36: 配置日志记录器，确保生产环境也能记录错误
 logging.basicConfig(
     level=logging.INFO,
@@ -69,6 +72,9 @@ fastapi_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 1.3.36: 添加Embedding缓存中间件，每个请求共享同一个Embedding结果
+fastapi_app.add_middleware(EmbeddingCacheMiddleware)
 
 # 1.2.35: 健康检查端点（用于 Cloud Run）
 # 1.3.0: 推荐问题离线预计算功能

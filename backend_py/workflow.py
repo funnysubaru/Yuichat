@@ -26,6 +26,9 @@ from crawler import crawl_urls
 # 1.3.31: 导入QA问答服务（用于QA匹配）
 from qa_service import QAService, get_qa_collection_name
 
+# 1.3.36: 导入Embedding缓存模块
+from embedding_cache import embed_query_with_cache
+
 # 1.2.39: 优先加载 .env.local，然后加载 .env（如果存在）
 load_dotenv('.env.local')  # 本地开发配置优先
 load_dotenv()  # 回退到 .env
@@ -569,9 +572,8 @@ def chat_node(state: GraphState):
             vx = vecs.create_client(DATABASE_URL)
             collection = vx.get_collection(name=collection_name)
             
-            # 生成查询向量
-            embeddings_model = OpenAIEmbeddings()
-            query_vector = embeddings_model.embed_query(user_query)
+            # 1.3.36: 使用缓存版本的embed_query，避免重复调用OpenAI API
+            query_vector = embed_query_with_cache(user_query)
             
             # 1.3.11: 检索相似文档，启用 include_value 获取相似度分数
             # 1.3.10: 旧版本使用 include_value=False
@@ -925,9 +927,8 @@ async def chat_node_stream(state: GraphState):
             vx = vecs.create_client(DATABASE_URL)
             collection = vx.get_collection(name=collection_name)
             
-            # 生成查询向量
-            embeddings_model = OpenAIEmbeddings()
-            query_vector = embeddings_model.embed_query(user_query)
+            # 1.3.36: 使用缓存版本的embed_query，避免重复调用OpenAI API
+            query_vector = embed_query_with_cache(user_query)
             
             # 1.3.11: 检索相似文档，启用 include_value 获取相似度分数
             results = collection.query(

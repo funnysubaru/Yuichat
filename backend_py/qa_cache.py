@@ -34,6 +34,9 @@ from supabase import create_client, Client
 # LangChain Embeddings
 from langchain_openai import OpenAIEmbeddings
 
+# 1.3.36: 导入Embedding缓存模块
+from embedding_cache import embed_query_with_cache
+
 # 环境配置
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -101,10 +104,10 @@ async def check_cache(
         similarity_threshold = QA_CACHE_SIMILARITY_THRESHOLD
     
     try:
-        # 1. 生成问题的 embedding（~300ms）
-        embeddings_model = get_embeddings_model()
+        # 1. 生成问题的 embedding（使用请求级缓存，避免重复调用）
+        # 1.3.36: 使用缓存版本的embed_query
         question_embedding = await asyncio.to_thread(
-            embeddings_model.embed_query, question
+            embed_query_with_cache, question
         )
         
         # 2. 使用 pgvector 进行相似度搜索
@@ -245,10 +248,10 @@ async def save_to_cache(
         ttl_hours = QA_CACHE_TTL_HOURS
     
     try:
-        # 1. 生成问题的 embedding
-        embeddings_model = get_embeddings_model()
+        # 1. 生成问题的 embedding（使用请求级缓存）
+        # 1.3.36: 复用缓存中的embedding，避免重复调用
         question_embedding = await asyncio.to_thread(
-            embeddings_model.embed_query, question
+            embed_query_with_cache, question
         )
         
         # 2. 计算过期时间
