@@ -31,6 +31,9 @@ from cloud_tasks import trigger_question_generation, is_cloud_tasks_enabled
 # 1.3.15: 导入问答语义缓存模块（用于加速重复问题响应）
 from qa_cache import check_cache, save_to_cache, clear_cache_by_kb
 
+# 1.3.30: 导入QA问答服务模块
+from qa_service import QAService
+
 # 1.2.36: 配置日志记录器，确保生产环境也能记录错误
 logging.basicConfig(
     level=logging.INFO,
@@ -816,14 +819,23 @@ async def chat(request: Request):
             try:
                 # 1.1.13: 尝试通过 share_token 查询知识库信息
                 # 1.3.18: 添加 chat_config 字段获取，用于读取 performance_mode
+                # 1.3.33: 同时支持通过 id 或 share_token 查询
                 result = supabase.table("knowledge_bases")\
                     .select("vector_collection, user_id, id, chat_config")\
                     .eq("share_token", kb_token)\
-                    .single()\
+                    .limit(1)\
                     .execute()
                 
-                if result.data:
-                    kb_data = result.data
+                # 如果通过 share_token 未找到，尝试通过 id 查询
+                if not result.data or len(result.data) == 0:
+                    result = supabase.table("knowledge_bases")\
+                        .select("vector_collection, user_id, id, chat_config")\
+                        .eq("id", kb_token)\
+                        .limit(1)\
+                        .execute()
+                
+                if result.data and len(result.data) > 0:
+                    kb_data = result.data[0]  # 1.3.33: 获取第一条记录
                     vector_collection = kb_data.get("vector_collection")
                     
                     # 1.1.15: 验证 vector_collection 是否有效（不为 None 且不为空字符串）
@@ -1021,14 +1033,24 @@ async def chat_stream(request: Request):
         
         if supabase:
             try:
+                # 1.3.33: 同时支持通过 id 或 share_token 查询
+                # 先尝试通过 share_token 查询
                 result = supabase.table("knowledge_bases")\
                     .select("vector_collection, user_id, id, chat_config")\
                     .eq("share_token", kb_token)\
-                    .single()\
+                    .limit(1)\
                     .execute()
                 
-                if result.data:
-                    kb_data = result.data
+                # 如果通过 share_token 未找到，尝试通过 id 查询
+                if not result.data or len(result.data) == 0:
+                    result = supabase.table("knowledge_bases")\
+                        .select("vector_collection, user_id, id, chat_config")\
+                        .eq("id", kb_token)\
+                        .limit(1)\
+                        .execute()
+                
+                if result.data and len(result.data) > 0:
+                    kb_data = result.data[0]  # 1.3.33: 获取第一条记录
                     vector_collection = kb_data.get("vector_collection")
                     
                     if vector_collection and isinstance(vector_collection, str) and vector_collection.strip():
@@ -1567,39 +1589,52 @@ async def get_frequent_questions(request: Request):
                     if os.getenv("ENV") == "development":
                         print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from pgvector")
                 except Exception as e:
-                    logger.error(f"pgvector query failed for collection {collection_name}: {str(e)}", exc_info=True)
-                    logger.warning(f"Falling back to Chroma for collection: {collection_name}")
-                    if os.getenv("ENV") == "development":
-                        print(f"⚠️ pgvector query error: {e}, falling back to Chroma")
-                    # 回退到 Chroma（注意：Cloud Run 环境中可能无法访问本地文件系统）
-                    logger.warning(f"Attempting Chroma fallback for collection: {collection_name} (may fail in Cloud Run)")
-                    try:
-                        # 1.2.56: 条件导入 Chroma
-                        from langchain_community.vectorstores import Chroma
-                        vectorstore = Chroma(
-                            persist_directory=f"./chroma_db/{collection_name}",
-                            embedding_function=OpenAIEmbeddings()
-                        )
-                        retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
-                        for query_word in query_words[:3]:
-                            docs = retriever.invoke(query_word)
-                            logger.info(f"Chroma query for '{query_word}' returned {len(docs)} docs")
-                            for doc in docs:
-                                if doc.page_content and len(doc.page_content.strip()) > 50:
-                                    is_error = (
-                                        'error' in doc.metadata or 
-                                        '爬取失败' in doc.page_content or 
-                                        '解析失败' in doc.page_content
-                                    )
-                                    if not is_error:
-                                        sample_docs.append(doc.page_content)
-                        sample_docs = list(dict.fromkeys(sample_docs))[:10]
-                        logger.info(f"Retrieved {len(sample_docs)} documents from Chroma (fallback) for collection: {collection_name}")
+                    # 1.3.32: 改进错误处理
+                    error_str = str(e).lower()
+                    if "collection" in error_str and ("not found" in error_str or "not exist" in error_str):
+                        logger.warning(f"Vector collection {collection_name} does not exist, returning default questions")
                         if os.getenv("ENV") == "development":
-                            print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from Chroma (fallback)")
-                    except Exception as chroma_error:
-                        logger.error(f"Chroma fallback also failed for collection {collection_name}: {str(chroma_error)}", exc_info=True)
-                        raise  # 重新抛出异常，让外层处理
+                            print(f"⚠️ 向量集合 {collection_name} 不存在")
+                        # 集合不存在，直接返回默认问题（不尝试 Chroma fallback）
+                        sample_docs = []
+                    else:
+                        logger.error(f"pgvector query failed for collection {collection_name}: {str(e)}", exc_info=True)
+                        logger.warning(f"Falling back to Chroma for collection: {collection_name}")
+                        if os.getenv("ENV") == "development":
+                            print(f"⚠️ pgvector query error: {e}, falling back to Chroma")
+                        # 回退到 Chroma（注意：Cloud Run 环境中可能无法访问本地文件系统）
+                        logger.warning(f"Attempting Chroma fallback for collection: {collection_name} (may fail in Cloud Run)")
+                        try:
+                            # 1.2.56: 条件导入 Chroma
+                            from langchain_community.vectorstores import Chroma
+                            vectorstore = Chroma(
+                                persist_directory=f"./chroma_db/{collection_name}",
+                                embedding_function=OpenAIEmbeddings()
+                            )
+                            retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+                            for query_word in query_words[:3]:
+                                docs = retriever.invoke(query_word)
+                                logger.info(f"Chroma query for '{query_word}' returned {len(docs)} docs")
+                                for doc in docs:
+                                    if doc.page_content and len(doc.page_content.strip()) > 50:
+                                        is_error = (
+                                            'error' in doc.metadata or 
+                                            '爬取失败' in doc.page_content or 
+                                            '解析失败' in doc.page_content
+                                        )
+                                        if not is_error:
+                                            sample_docs.append(doc.page_content)
+                            sample_docs = list(dict.fromkeys(sample_docs))[:10]
+                            logger.info(f"Retrieved {len(sample_docs)} documents from Chroma (fallback) for collection: {collection_name}")
+                            if os.getenv("ENV") == "development":
+                                print(f"✅ DEBUG: Retrieved {len(sample_docs)} documents from Chroma (fallback)")
+                        except ImportError as import_err:
+                            # 1.3.32: Chroma 导入失败（pydantic 版本冲突）
+                            logger.warning(f"Chroma import failed: {import_err}, returning default questions")
+                            sample_docs = []
+                        except Exception as chroma_error:
+                            logger.error(f"Chroma fallback also failed for collection {collection_name}: {str(chroma_error)}", exc_info=True)
+                            sample_docs = []  # 1.3.32: 不抛出异常，返回默认问题
             else:
                 # 使用 Chroma
                 if os.getenv("ENV") == "development":
@@ -2277,6 +2312,339 @@ async def main(message: cl.Message):
         await cl.Message(content=error_msg, author="Assistant").send()
 """  # 1.2.24: Chainlit 代码块结束
 
+# ============================================================================
+# 1.3.30: QA问答管理 API 端点
+# ============================================================================
+
+# 1.3.30: 初始化QA服务
+qa_service = QAService(supabase) if supabase else None
+
+@fastapi_app.post("/api/qa/create")
+async def create_qa_item(request: Request):
+    """
+    1.3.30: 创建单个QA问答
+    
+    请求体:
+    {
+        "knowledge_base_id": "知识库UUID",
+        "question": "主问题",
+        "answer": "答案",
+        "similar_questions": ["相似问题1", "相似问题2"]  // 可选
+    }
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        data = await request.json()
+        knowledge_base_id = data.get("knowledge_base_id")
+        question = data.get("question")
+        answer = data.get("answer")
+        similar_questions = data.get("similar_questions", [])
+        
+        if not knowledge_base_id or not question or not answer:
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        result = qa_service.create_qa_item(
+            knowledge_base_id=knowledge_base_id,
+            question=question,
+            answer=answer,
+            similar_questions=similar_questions,
+            source='custom'
+        )
+        
+        if result['success']:
+            return JSONResponse(content=result)
+        else:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to create QA'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Create QA error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fastapi_app.get("/api/qa/list")
+async def list_qa_items(
+    knowledge_base_id: str,
+    status: str = None,
+    source: str = None,
+    search: str = None,
+    page: int = 1,
+    page_size: int = 20
+):
+    """
+    1.3.30: 获取QA问答列表
+    
+    查询参数:
+    - knowledge_base_id: 知识库UUID (必填)
+    - status: 筛选状态 (pending/learned/failed)
+    - source: 筛选来源 (custom/batch)
+    - search: 搜索关键词
+    - page: 页码 (默认1)
+    - page_size: 每页数量 (默认20)
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        result = qa_service.list_qa_items(
+            knowledge_base_id=knowledge_base_id,
+            status=status,
+            source=source,
+            search=search,
+            page=page,
+            page_size=page_size
+        )
+        
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        logger.error(f"List QA error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fastapi_app.get("/api/qa/{qa_id}")
+async def get_qa_item(qa_id: str):
+    """
+    1.3.30: 获取单个QA问答详情
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        result = qa_service.get_qa_item(qa_id)
+        
+        if result['success']:
+            return JSONResponse(content=result)
+        else:
+            raise HTTPException(status_code=404, detail=result.get('error', 'QA not found'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get QA error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fastapi_app.put("/api/qa/{qa_id}")
+async def update_qa_item(qa_id: str, request: Request):
+    """
+    1.3.30: 更新QA问答
+    
+    请求体:
+    {
+        "question": "新问题",      // 可选
+        "answer": "新答案",        // 可选
+        "similar_questions": [],   // 可选
+        "status": "learned"        // 可选
+    }
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        data = await request.json()
+        
+        result = qa_service.update_qa_item(
+            qa_id=qa_id,
+            question=data.get("question"),
+            answer=data.get("answer"),
+            similar_questions=data.get("similar_questions"),
+            status=data.get("status")
+        )
+        
+        if result['success']:
+            return JSONResponse(content=result)
+        else:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to update QA'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update QA error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fastapi_app.delete("/api/qa/{qa_id}")
+async def delete_qa_item(qa_id: str):
+    """
+    1.3.30: 删除单个QA问答
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        result = qa_service.delete_qa_item(qa_id)
+        
+        if result['success']:
+            return JSONResponse(content=result)
+        else:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to delete QA'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete QA error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fastapi_app.post("/api/qa/batch-delete")
+async def delete_qa_items_batch(request: Request):
+    """
+    1.3.30: 批量删除QA问答
+    
+    请求体:
+    {
+        "qa_ids": ["id1", "id2", ...]
+    }
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        data = await request.json()
+        qa_ids = data.get("qa_ids", [])
+        
+        if not qa_ids:
+            raise HTTPException(status_code=400, detail="No QA IDs provided")
+        
+        result = qa_service.delete_qa_items_batch(qa_ids)
+        
+        if result['success']:
+            return JSONResponse(content=result)
+        else:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to delete QA items'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch delete QA error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fastapi_app.post("/api/qa/batch-upload")
+async def batch_upload_qa(request: Request):
+    """
+    1.3.30: 批量上传QA问答 (xlsx文件)
+    
+    请求体 (multipart/form-data):
+    - file: xlsx文件
+    - knowledge_base_id: 知识库UUID
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        from fastapi import UploadFile, Form, File
+        
+        # 解析 multipart 表单数据
+        form = await request.form()
+        file = form.get("file")
+        knowledge_base_id = form.get("knowledge_base_id")
+        
+        if not file or not knowledge_base_id:
+            raise HTTPException(status_code=400, detail="Missing file or knowledge_base_id")
+        
+        # 读取文件内容
+        file_content = await file.read()
+        filename = file.filename
+        file_size = len(file_content)
+        
+        # 验证文件类型
+        if not filename.endswith('.xlsx'):
+            raise HTTPException(status_code=400, detail="Only xlsx files are supported")
+        
+        # 验证文件大小 (最大 20MB)
+        if file_size > 20 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size exceeds 20MB limit")
+        
+        result = qa_service.batch_upload(
+            knowledge_base_id=knowledge_base_id,
+            file_content=file_content,
+            filename=filename,
+            file_size=file_size
+        )
+        
+        if result['success']:
+            return JSONResponse(content=result)
+        else:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to upload QA'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch upload QA error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fastapi_app.get("/api/qa/upload-records")
+async def list_upload_records(
+    knowledge_base_id: str,
+    page: int = 1,
+    page_size: int = 20
+):
+    """
+    1.3.30: 获取QA上传记录列表
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        result = qa_service.list_upload_records(
+            knowledge_base_id=knowledge_base_id,
+            page=page,
+            page_size=page_size
+        )
+        
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        logger.error(f"List upload records error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fastapi_app.post("/api/qa/batch-update-status")
+async def update_qa_status_batch(request: Request):
+    """
+    1.3.30: 批量更新QA学习状态
+    
+    请求体:
+    {
+        "qa_ids": ["id1", "id2", ...],
+        "status": "learned"  // pending/learned/failed
+    }
+    """
+    if not qa_service:
+        raise HTTPException(status_code=500, detail="QA service not available")
+    
+    try:
+        data = await request.json()
+        qa_ids = data.get("qa_ids", [])
+        status = data.get("status")
+        
+        if not qa_ids or not status:
+            raise HTTPException(status_code=400, detail="Missing qa_ids or status")
+        
+        if status not in ['pending', 'learned', 'failed']:
+            raise HTTPException(status_code=400, detail="Invalid status value")
+        
+        result = qa_service.update_qa_status_batch(qa_ids, status)
+        
+        if result['success']:
+            return JSONResponse(content=result)
+        else:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Failed to update status'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch update QA status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
 # 1.2.24: 使用 uvicorn 启动 FastAPI 应用
 if __name__ == "__main__":
     import uvicorn

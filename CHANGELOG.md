@@ -1,5 +1,176 @@
 # Changelog
 
+## 1.3.33 (2026-01-28)
+
+### Bug修复 - QA匹配和知识库查询
+
+#### 问题原因
+
+1. **Chroma fallback 失败**: 当 pgvector 集合不存在时，chromadb 与 pydantic v2 不兼容
+2. **知识库查询失败**: `/api/chat/stream` 只通过 `share_token` 查询，不支持直接传入 `id`
+3. **流式API无QA匹配**: `chat_node_stream` 缺少 QA 匹配逻辑
+
+#### 修复内容
+
+1. **workflow.py**:
+   - 改进 `retrieve_node` 和 `rerank_node` 中的 fallback 逻辑
+   - 当集合不存在时返回空上下文，不尝试 Chroma fallback
+   - 捕获 Chroma ImportError，优雅降级
+   - **在 `chat_node_stream` 中添加 QA 匹配逻辑**
+
+2. **app.py**:
+   - 改进 `get_frequent_questions` 中的 fallback 逻辑
+   - **同时支持通过 `id` 或 `share_token` 查询知识库**
+
+3. **qa_service.py**:
+   - 修复 `match_qa` 中的 collection 检查（使用 `is None`）
+   - 添加调试日志
+
+#### 修改文件
+
+- `backend_py/workflow.py` - 改进向量查询 fallback 逻辑，添加流式QA匹配
+- `backend_py/app.py` - 改进知识库查询和高频问题生成
+- `backend_py/qa_service.py` - 修复 QA 匹配逻辑
+- `VERSION` - 更新版本号到 1.3.33
+- `CHANGELOG.md` - 添加版本记录
+
+---
+
+## 1.3.32 (2026-01-28)
+
+### Bug修复 - QA向量存储失败问题
+
+#### 问题原因
+
+`vecs.Collection` 对象的 `__bool__` 方法返回 `False`，导致 `if not collection:` 判断错误地认为 collection 不存在。
+
+#### 修复内容
+
+- `qa_service.py`: 将 `if not collection:` 改为 `if collection is None:`
+- 影响方法:
+  - `store_qa_to_vector()` - QA向量存储
+  - `delete_qa_from_vector()` - QA向量删除
+
+#### 修改文件
+
+- `backend_py/qa_service.py` - 修复 collection 检查逻辑
+- `VERSION` - 更新版本号到 1.3.32
+- `CHANGELOG.md` - 添加版本记录
+
+---
+
+## 1.3.31 (2026-01-28)
+
+### 新功能 - QA向量存储和匹配
+
+#### 功能概述
+
+为QA问答系统添加向量存储和智能匹配功能，使QA问答能够参与对话流程。
+
+#### 实现内容
+
+1. **向量存储**
+   - 创建QA时自动将问题和相似问题存入向量数据库
+   - 向量集合命名规则：`{原集合名}_qa`
+   - 支持主问题和多个相似问题同时向量化
+
+2. **智能匹配**
+   - 在RAG检索前优先检查QA问答库
+   - 默认匹配阈值：0.85（可通过环境变量 `QA_MATCH_THRESHOLD` 配置）
+   - 匹配成功后直接返回预设答案，跳过RAG流程
+
+3. **状态管理**
+   - `pending` → 创建中
+   - `learned` → 向量存储成功，可被匹配
+   - `failed` → 向量存储失败
+
+#### 修改文件
+
+- `backend_py/qa_service.py` - 添加向量存储和匹配方法
+- `backend_py/workflow.py` - 在chat_node中添加QA匹配逻辑
+
+#### 环境变量
+
+- `QA_MATCH_THRESHOLD` - QA匹配阈值，默认0.85
+
+---
+
+## 1.3.30 (2026-01-28)
+
+### 新功能 - QA问答管理功能
+
+#### 功能概述
+
+参考ChatMax的QA问答管理功能，为YUIChat开发完整的QA问答系统。该系统允许用户手动创建问答对、批量上传xlsx文件、管理相似问题。
+
+#### 新增文件
+
+**前端组件**
+- `src/pages/QAPage.tsx` - QA问答管理主页面
+- `src/components/CreateQAModal.tsx` - 创建/编辑QA问答弹窗
+- `src/components/BatchUploadQAModal.tsx` - 批量上传弹窗
+- `src/services/qaService.ts` - QA服务层
+
+**后端服务**
+- `backend_py/qa_service.py` - QA问答服务模块
+
+**数据库迁移**
+- `supabase/migrations/20260128100000_create_qa_items.sql` - QA问答表和上传记录表
+
+**模板文件**
+- `public/templates/qa_template.xlsx` - 批量上传xlsx模板
+
+#### 修改文件
+
+- `src/App.tsx` - 添加QA页面路由
+- `src/i18n.ts` - 添加QA问答相关多语言文本（中/日/英）
+- `backend_py/app.py` - 添加QA相关API端点
+
+#### 数据库表
+
+**qa_items** - QA问答表
+- `id` - UUID主键
+- `knowledge_base_id` - 知识库ID
+- `question` - 主问题
+- `answer` - 答案
+- `similar_questions` - 相似问题数组
+- `source` - 来源（custom/batch）
+- `word_count` - 答案字数
+- `status` - 学习状态（pending/learned/failed）
+- `created_at`, `updated_at` - 时间戳
+
+**qa_upload_records** - QA上传记录表
+- `id` - UUID主键
+- `knowledge_base_id` - 知识库ID
+- `filename` - 文件名
+- `file_size` - 文件大小
+- `total_count` - 总条目数
+- `success_count` - 成功导入数
+- `failed_count` - 失败数
+- `status` - 处理状态
+- `error_message` - 错误信息
+
+#### API端点
+
+- `POST /api/qa/create` - 创建单个QA
+- `GET /api/qa/list` - 获取QA列表
+- `GET /api/qa/{qa_id}` - 获取QA详情
+- `PUT /api/qa/{qa_id}` - 更新QA
+- `DELETE /api/qa/{qa_id}` - 删除QA
+- `POST /api/qa/batch-delete` - 批量删除
+- `POST /api/qa/batch-upload` - 批量上传xlsx
+- `GET /api/qa/upload-records` - 获取上传记录
+- `POST /api/qa/batch-update-status` - 批量更新状态
+
+#### 功能说明
+
+1. **新建问答**：可以填写问题、增加相似问题、回答问题
+2. **批量上传QA**：上传xlsx文档，支持模板下载
+3. **问答列表**：搜索、筛选、分页、批量操作
+4. **上传记录**：查看历史上传记录和状态
+
+---
+
 ## 1.3.29 (2026-01-28)
 
 ### 优化 - C端聊天页面loading也移除思考文字

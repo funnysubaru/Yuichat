@@ -23,6 +23,9 @@ from dotenv import load_dotenv
 # 1.1.11: 导入爬虫模块
 from crawler import crawl_urls
 
+# 1.3.31: 导入QA问答服务（用于QA匹配）
+from qa_service import QAService, get_qa_collection_name
+
 # 1.2.39: 优先加载 .env.local，然后加载 .env（如果存在）
 load_dotenv('.env.local')  # 本地开发配置优先
 load_dotenv()  # 回退到 .env
@@ -457,14 +460,22 @@ def embed_and_store_node(state: GraphState):
                 if url_vectors > 0:
                     print(f"  其中 {url_vectors} 个向量来自URL爬取")
         except Exception as e:
-            print(f"❌ pgvector error: {e}, falling back to Chroma")
-            # 1.2.56: 回退时需要先导入 Chroma
-            from langchain_community.vectorstores import Chroma as ChromaFallback
-            vectorstore = ChromaFallback.from_documents(
-                documents=splits,
-                embedding=OpenAIEmbeddings(),
-                persist_directory=f"./chroma_db/{collection_name}"
-            )
+            print(f"❌ pgvector error: {e}")
+            # 1.3.32: 尝试 Chroma fallback，但捕获导入错误
+            try:
+                print(f"🔄 尝试回退到 Chroma 存储...")
+                from langchain_community.vectorstores import Chroma as ChromaFallback
+                vectorstore = ChromaFallback.from_documents(
+                    documents=splits,
+                    embedding=OpenAIEmbeddings(),
+                    persist_directory=f"./chroma_db/{collection_name}"
+                )
+            except ImportError as import_err:
+                print(f"⚠️ Chroma 导入失败: {import_err}")
+                raise Exception(f"向量存储失败: pgvector 错误 ({e}), Chroma 不可用 ({import_err})")
+            except Exception as chroma_err:
+                print(f"⚠️ Chroma 存储也失败: {chroma_err}")
+                raise Exception(f"向量存储失败: pgvector 错误 ({e}), Chroma 错误 ({chroma_err})")
     else:
         # 1.1.0: 使用 Chroma 作为本地向量库（本地开发）
         # 1.2.56: Chroma 已在条件导入块中导入
@@ -514,6 +525,42 @@ def chat_node(state: GraphState):
     
     # 1.3.11: 初始化 citations 数组
     citations = []
+    
+    # 1.3.31: 先检查QA问答库，如果匹配则直接返回预设答案
+    try:
+        from supabase import create_client
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if supabase_url and supabase_key and USE_PGVECTOR:
+            supabase_client = create_client(supabase_url, supabase_key)
+            qa_service = QAService(supabase_client)
+            
+            qa_match = qa_service.match_qa(collection_name, user_query)
+            
+            if qa_match and qa_match.get('matched'):
+                qa_answer = qa_match.get('answer', '')
+                qa_score = qa_match.get('score', 0)
+                
+                if os.getenv("ENV") == "development":
+                    print(f"✅ QA匹配成功! score={qa_score:.4f}, qa_id={qa_match.get('qa_id')}")
+                
+                # 直接返回QA答案
+                messages.append(AIMessage(content=qa_answer))
+                return {
+                    "messages": messages,
+                    "answer": qa_answer,
+                    "context": f"[QA匹配] 问题: {qa_match.get('question')}",
+                    "citations": [{
+                        "id": qa_match.get('qa_id'),
+                        "source": "QA问答库",
+                        "content": qa_match.get('question'),
+                        "score": qa_score
+                    }]
+                }
+    except Exception as e:
+        if os.getenv("ENV") == "development":
+            print(f"⚠️ QA匹配检查失败: {e}")
     
     # 1.1.3: 根据配置选择向量数据库
     if USE_PGVECTOR and DATABASE_URL:
@@ -584,51 +631,69 @@ def chat_node(state: GraphState):
                     print("⚠️ 警告: pgvector检索后上下文为空或过短")
             
         except Exception as e:
-            print(f"❌ pgvector query error: {e}, falling back to Chroma")
-            # 1.2.56: 回退时需要先导入 Chroma
-            from langchain_community.vectorstores import Chroma as ChromaFallback
-            vectorstore = ChromaFallback(
-                persist_directory=f"./chroma_db/{collection_name}",
-                embedding_function=OpenAIEmbeddings()
-            )
-            # 1.2.12: 使用可配置的检索数量
-            retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVE_K})
-            relevant_docs = retriever.invoke(user_query)
-            
-            # 1.1.11: 过滤掉错误文档
-            valid_docs = []
-            for idx, doc in enumerate(relevant_docs):
-                is_error = (
-                    'error' in doc.metadata or 
-                    '爬取失败' in doc.page_content or 
-                    '解析失败' in doc.page_content or
-                    doc.page_content.strip().startswith('爬取失败') or
-                    doc.page_content.strip().startswith('解析失败')
-                )
-                if not is_error:
-                    valid_docs.append(doc)
-                    # 1.3.11: 收集 citation 信息（Chroma 回退时）
-                    source = doc.metadata.get('source', doc.metadata.get('url', ''))
-                    content = doc.page_content[:500] if len(doc.page_content) > 500 else doc.page_content
-                    citations.append({
-                        "id": f"chroma-fallback-{idx}",
-                        "source": source,
-                        "content": content,
-                        "score": None  # Chroma retriever 不返回分数
-                    })
-            
-            # 1.2.12: 使用可配置的片段数量限制
-            if valid_docs:
-                relevant_docs = valid_docs[:MAX_CHUNKS]
-            
-            context = "\n\n".join([doc.page_content for doc in relevant_docs])
-            # 1.3.11: 限制 citations 数量
-            citations = citations[:5]
-            
-            # 1.1.11: 检查上下文是否为空
-            if not context or not context.strip() or len(context.strip()) < 50:
-                if os.getenv("ENV") == "development":
-                    print("⚠️ 警告: pgvector回退到Chroma后上下文为空或过短")
+            print(f"❌ pgvector query error: {e}")
+            # 1.3.32: 改进错误处理，检查是否是集合不存在的错误
+            error_str = str(e).lower()
+            if "collection" in error_str and ("not found" in error_str or "not exist" in error_str):
+                print(f"⚠️ 向量集合 {collection_name} 不存在，请先上传文档")
+                # 返回空上下文，让 LLM 使用通用回答
+                context = ""
+                citations = []
+            else:
+                # 1.3.32: 尝试 Chroma fallback，但捕获导入错误
+                try:
+                    print(f"🔄 尝试回退到 Chroma...")
+                    from langchain_community.vectorstores import Chroma as ChromaFallback
+                    vectorstore = ChromaFallback(
+                        persist_directory=f"./chroma_db/{collection_name}",
+                        embedding_function=OpenAIEmbeddings()
+                    )
+                    # 1.2.12: 使用可配置的检索数量
+                    retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVE_K})
+                    relevant_docs = retriever.invoke(user_query)
+                    
+                    # 1.1.11: 过滤掉错误文档
+                    valid_docs = []
+                    for idx, doc in enumerate(relevant_docs):
+                        is_error = (
+                            'error' in doc.metadata or 
+                            '爬取失败' in doc.page_content or 
+                            '解析失败' in doc.page_content or
+                            doc.page_content.strip().startswith('爬取失败') or
+                            doc.page_content.strip().startswith('解析失败')
+                        )
+                        if not is_error:
+                            valid_docs.append(doc)
+                            # 1.3.11: 收集 citation 信息（Chroma 回退时）
+                            source = doc.metadata.get('source', doc.metadata.get('url', ''))
+                            content = doc.page_content[:500] if len(doc.page_content) > 500 else doc.page_content
+                            citations.append({
+                                "id": f"chroma-fallback-{idx}",
+                                "source": source,
+                                "content": content,
+                                "score": None  # Chroma retriever 不返回分数
+                            })
+                    
+                    # 1.2.12: 使用可配置的片段数量限制
+                    if valid_docs:
+                        relevant_docs = valid_docs[:MAX_CHUNKS]
+                    
+                    context = "\n\n".join([doc.page_content for doc in relevant_docs])
+                    # 1.3.11: 限制 citations 数量
+                    citations = citations[:5]
+                    
+                    # 1.1.11: 检查上下文是否为空
+                    if not context or not context.strip() or len(context.strip()) < 50:
+                        if os.getenv("ENV") == "development":
+                            print("⚠️ 警告: pgvector回退到Chroma后上下文为空或过短")
+                except ImportError as import_err:
+                    print(f"⚠️ Chroma 导入失败: {import_err}，返回空上下文")
+                    context = ""
+                    citations = []
+                except Exception as chroma_err:
+                    print(f"⚠️ Chroma 查询也失败: {chroma_err}，返回空上下文")
+                    context = ""
+                    citations = []
     else:
         # 使用 Chroma（本地开发）
         # 1.2.56: Chroma 已在条件导入块中导入
@@ -816,6 +881,42 @@ async def chat_node_stream(state: GraphState):
     # 1.3.11: 初始化 citations 数组
     citations = []
     
+    # 1.3.33: 先检查QA匹配（优先于RAG检索）
+    try:
+        from supabase import create_client
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if supabase_url and supabase_key and USE_PGVECTOR:
+            supabase_client = create_client(supabase_url, supabase_key)
+            qa_service = QAService(supabase_client)
+            
+            qa_match = qa_service.match_qa(collection_name, user_query)
+            
+            if qa_match and qa_match.get('matched'):
+                qa_answer = qa_match.get('answer', '')
+                qa_score = qa_match.get('score', 0)
+                
+                if os.getenv("ENV") == "development":
+                    print(f"✅ [Stream] QA匹配成功! score={qa_score:.4f}, qa_id={qa_match.get('qa_id')}")
+                
+                # 直接返回QA答案
+                yield {
+                    "answer": qa_answer,
+                    "context": f"[QA匹配] 问题: {qa_match.get('question')}",
+                    "citations": [{
+                        "id": qa_match.get('qa_id'),
+                        "source": "QA问答库",
+                        "content": qa_match.get('question'),
+                        "score": qa_score
+                    }],
+                    "done": True
+                }
+                return
+    except Exception as e:
+        if os.getenv("ENV") == "development":
+            print(f"⚠️ [Stream] QA匹配检查失败: {e}")
+    
     # 1.2.24: 向量检索（与 chat_node 相同的逻辑）
     context = ""
     if USE_PGVECTOR and DATABASE_URL:
@@ -881,43 +982,60 @@ async def chat_node_stream(state: GraphState):
                     print("⚠️ 警告: pgvector检索后上下文为空或过短")
             
         except Exception as e:
-            print(f"❌ pgvector query error: {e}, falling back to Chroma")
-            # 1.2.56: 回退时需要先导入 Chroma
-            from langchain_community.vectorstores import Chroma as ChromaFallback
-            vectorstore = ChromaFallback(
-                persist_directory=f"./chroma_db/{collection_name}",
-                embedding_function=OpenAIEmbeddings()
-            )
-            retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVE_K})
-            relevant_docs = retriever.invoke(user_query)
-            
-            valid_docs = []
-            for idx, doc in enumerate(relevant_docs):
-                is_error = (
-                    'error' in doc.metadata or 
-                    '爬取失败' in doc.page_content or 
-                    '解析失败' in doc.page_content or
-                    doc.page_content.strip().startswith('爬取失败') or
-                    doc.page_content.strip().startswith('解析失败')
-                )
-                if not is_error:
-                    valid_docs.append(doc)
-                    # 1.3.11: 收集 citation 信息（Chroma 回退时）
-                    source = doc.metadata.get('source', doc.metadata.get('url', ''))
-                    content = doc.page_content[:500] if len(doc.page_content) > 500 else doc.page_content
-                    citations.append({
-                        "id": f"chroma-stream-fallback-{idx}",
-                        "source": source,
-                        "content": content,
-                        "score": None
-                    })
-            
-            if valid_docs:
-                relevant_docs = valid_docs[:MAX_CHUNKS]
-            
-            context = "\n\n".join([doc.page_content for doc in relevant_docs])
-            # 1.3.11: 限制 citations 数量
-            citations = citations[:5]
+            print(f"❌ pgvector query error: {e}")
+            # 1.3.32: 改进错误处理，检查是否是集合不存在的错误
+            error_str = str(e).lower()
+            if "collection" in error_str and ("not found" in error_str or "not exist" in error_str):
+                print(f"⚠️ 向量集合 {collection_name} 不存在，请先上传文档")
+                context = ""
+                citations = []
+            else:
+                # 1.3.32: 尝试 Chroma fallback，但捕获导入错误
+                try:
+                    print(f"🔄 尝试回退到 Chroma...")
+                    from langchain_community.vectorstores import Chroma as ChromaFallback
+                    vectorstore = ChromaFallback(
+                        persist_directory=f"./chroma_db/{collection_name}",
+                        embedding_function=OpenAIEmbeddings()
+                    )
+                    retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVE_K})
+                    relevant_docs = retriever.invoke(user_query)
+                    
+                    valid_docs = []
+                    for idx, doc in enumerate(relevant_docs):
+                        is_error = (
+                            'error' in doc.metadata or 
+                            '爬取失败' in doc.page_content or 
+                            '解析失败' in doc.page_content or
+                            doc.page_content.strip().startswith('爬取失败') or
+                            doc.page_content.strip().startswith('解析失败')
+                        )
+                        if not is_error:
+                            valid_docs.append(doc)
+                            # 1.3.11: 收集 citation 信息（Chroma 回退时）
+                            source = doc.metadata.get('source', doc.metadata.get('url', ''))
+                            content = doc.page_content[:500] if len(doc.page_content) > 500 else doc.page_content
+                            citations.append({
+                                "id": f"chroma-stream-fallback-{idx}",
+                                "source": source,
+                                "content": content,
+                                "score": None
+                            })
+                    
+                    if valid_docs:
+                        relevant_docs = valid_docs[:MAX_CHUNKS]
+                    
+                    context = "\n\n".join([doc.page_content for doc in relevant_docs])
+                    # 1.3.11: 限制 citations 数量
+                    citations = citations[:5]
+                except ImportError as import_err:
+                    print(f"⚠️ Chroma 导入失败: {import_err}，返回空上下文")
+                    context = ""
+                    citations = []
+                except Exception as chroma_err:
+                    print(f"⚠️ Chroma 查询也失败: {chroma_err}，返回空上下文")
+                    context = ""
+                    citations = []
     else:
         # 使用 Chroma（本地开发）
         # 1.2.56: Chroma 已在条件导入块中导入
