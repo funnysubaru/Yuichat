@@ -47,3 +47,6 @@ google-cloud-tasks  # 1.3.1: Cloud Tasks 客户端
 # 1.3.16: RAG 评估框架
 ragas  # 1.3.16: RAG 回复精度评估框架
 datasets  # 1.3.16: Hugging Face datasets (RAGAS 依赖)
+# 1.3.37: Google Gemini 支持（低延迟亚洲区域LLM）
+langchain-google-genai  # 1.3.37: LangChain Gemini 集成
+google-generativeai  # 1.3.37: Google Generative AI SDK

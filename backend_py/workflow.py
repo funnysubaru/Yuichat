@@ -6,6 +6,15 @@ import urllib.parse  # 1.2.43: URL 解析
 import requests  # 1.2.43: HTTP 请求下载文件
 from typing import List, Dict, Any, TypedDict
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+
+# 1.3.37: Google Gemini 支持（低延迟亚洲区域LLM）
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    print("⚠️ langchain-google-genai 未安装，Gemini 不可用")
+
 # 1.2.42: 旧版导入（注释保留）
 # from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredExcelLoader
 # 1.2.42: 新版导入 - 支持更多文件格式
@@ -46,6 +55,12 @@ MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "4"))
 # RETRIEVE_K: 检索时获取的文档数量，应该比 MAX_CHUNKS 大以便过滤错误文档
 # 1.3.12: 从8增加到12，确保能检索到更多相关文档，包括可能排名靠后的关键信息
 RETRIEVE_K = int(os.getenv("RETRIEVE_K", "12"))
+
+# 1.3.37: LLM 提供商配置
+# 支持: openai, gemini
+# gemini 在亚洲区域延迟更低，适合日本用户
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+print(f"🤖 LLM 提供商: {LLM_PROVIDER}")
 
 # 1.1.3: 如果启用 pgvector，导入 vecs 库
 # 1.2.56: Chroma 改为条件导入，避免在使用 pgvector 时仍需安装 chromadb
@@ -826,15 +841,24 @@ Reference Materials:
     ])
     
     # 1.3.18: 根据 performance_mode 选择模型
-    # fast: gpt-4o-mini（响应快，成本低）
-    # accurate: gpt-4o（质量高，响应慢）
+    # fast: gpt-4o-mini / gemini-1.5-flash（响应快，成本低）
+    # accurate: gpt-4o / gemini-1.5-pro（质量高，响应慢）
     performance_mode = state.get('performance_mode', 'fast')
-    # model = "gpt-4o"  # 1.3.18: 旧版硬编码模型
-    model = "gpt-4o-mini" if performance_mode == 'fast' else "gpt-4o"
-    if os.getenv("ENV") == "development":
-        print(f"🤖 使用模型: {model} (performance_mode: {performance_mode})")
     
-    llm = ChatOpenAI(model=model, streaming=True)
+    # 1.3.37: 根据 LLM_PROVIDER 选择模型
+    if LLM_PROVIDER == "gemini" and GEMINI_AVAILABLE:
+        # 使用 Google Gemini
+        model = "gemini-1.5-flash" if performance_mode == 'fast' else "gemini-1.5-pro"
+        if os.getenv("ENV") == "development":
+            print(f"🤖 使用Gemini模型: {model} (performance_mode: {performance_mode})")
+        llm = ChatGoogleGenerativeAI(model=model, streaming=True)
+    else:
+        # 使用 OpenAI (默认)
+        model = "gpt-4o-mini" if performance_mode == 'fast' else "gpt-4o"
+        if os.getenv("ENV") == "development":
+            print(f"🤖 使用OpenAI模型: {model} (performance_mode: {performance_mode})")
+        llm = ChatOpenAI(model=model, streaming=True)
+    
     chain = prompt | llm
     
     response = chain.invoke({"context": context, "messages": messages})
@@ -1154,15 +1178,24 @@ Reference Materials:
     ])
     
     # 1.3.18: 根据 performance_mode 选择模型
-    # fast: gpt-4o-mini（响应快，成本低）
-    # accurate: gpt-4o（质量高，响应慢）
+    # fast: gpt-4o-mini / gemini-1.5-flash（响应快，成本低）
+    # accurate: gpt-4o / gemini-1.5-pro（质量高，响应慢）
     performance_mode = state.get('performance_mode', 'fast')
-    # model = "gpt-4o"  # 1.3.18: 旧版硬编码模型
-    model = "gpt-4o-mini" if performance_mode == 'fast' else "gpt-4o"
-    if os.getenv("ENV") == "development":
-        print(f"🤖 [Stream] 使用模型: {model} (performance_mode: {performance_mode})")
     
-    llm = ChatOpenAI(model=model, streaming=True)
+    # 1.3.37: 根据 LLM_PROVIDER 选择模型
+    if LLM_PROVIDER == "gemini" and GEMINI_AVAILABLE:
+        # 使用 Google Gemini
+        model = "gemini-1.5-flash" if performance_mode == 'fast' else "gemini-1.5-pro"
+        if os.getenv("ENV") == "development":
+            print(f"🤖 [Stream] 使用Gemini模型: {model} (performance_mode: {performance_mode})")
+        llm = ChatGoogleGenerativeAI(model=model, streaming=True)
+    else:
+        # 使用 OpenAI (默认)
+        model = "gpt-4o-mini" if performance_mode == 'fast' else "gpt-4o"
+        if os.getenv("ENV") == "development":
+            print(f"🤖 [Stream] 使用OpenAI模型: {model} (performance_mode: {performance_mode})")
+        llm = ChatOpenAI(model=model, streaming=True)
+    
     chain = prompt | llm
     
     # 1.2.24: 使用 astream 进行流式输出

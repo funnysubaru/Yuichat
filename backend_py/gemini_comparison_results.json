@@ -1,0 +1,92 @@
+[
+  {
+    "question": "法人税の納税義務者は誰ですか？",
+    "description": "日语法律问题",
+    "gpt": {
+      "success": true,
+      "provider": "openai",
+      "elapsed": 1.188483715057373,
+      "answer": "",
+      "answer_length": 0
+    },
+    "gemini": {
+      "success": true,
+      "provider": "gemini",
+      "elapsed": 0.5144557952880859,
+      "answer": "",
+      "answer_length": 0
+    }
+  },
+  {
+    "question": "内国法人の所得金額はどのように計算されますか？",
+    "description": "日语计算问题",
+    "gpt": {
+      "success": true,
+      "provider": "openai",
+      "elapsed": 0.7579269409179688,
+      "answer": "",
+      "answer_length": 0
+    },
+    "gemini": {
+      "success": true,
+      "provider": "gemini",
+      "elapsed": 0.508965015411377,
+      "answer": "",
+      "answer_length": 0
+    }
+  },
+  {
+    "question": "什么是法人税？",
+    "description": "中文基础问题",
+    "gpt": {
+      "success": true,
+      "provider": "openai",
+      "elapsed": 0.41727113723754883,
+      "answer": "法人税是对法人（企业、公司等）在一定期间内所获得的利润征收的一种税。法人税的目的在于对法人所创造的经济利益进行征税，通常按照公司年度的净利润计算。法人税的具体税率和计算方法会因国家和地区的税法而有所不同。法人税是各国税收体系中的重要组成部分，通常会影响企业的经营决策和投资方向。",
+      "answer_length": 139
+    },
+    "gemini": {
+      "success": true,
+      "provider": "gemini",
+      "elapsed": 0.39351797103881836,
+      "answer": "法人税是对法人（企业、公司等）在一定期间内所获得的利润征收的一种税。法人税的目的在于对法人所创造的经济利益进行征税，通常按照公司年度的净利润计算。法人税的具体税率和计算方法会因国家和地区的税法而有所不同。法人税是各国税收体系中的重要组成部分，通常会影响企业的经营决策和投资方向。",
+      "answer_length": 139
+    }
+  },
+  {
+    "question": "税法有什么规定？",
+    "description": "中文概述问题",
+    "gpt": {
+      "success": true,
+      "provider": "openai",
+      "elapsed": 0.47716212272644043,
+      "answer": "税法的规定包括多个方面，比如税务的基本原则、纳税义务、税种、纳税申报、税收管理等。具体而言，内国法人负有缴纳法人税的义务。此外，规定了法人税在损金计算中的处理方式、相关的控除规则、以及对外国法人和个人在特定情况下的纳税义务等。税法还涉及到中间申告、确定申告的相关程序及要求。这些条款的目的是确保税收的合规性和公平性。",
+      "answer_length": 158
+    },
+    "gemini": {
+      "success": true,
+      "provider": "gemini",
+      "elapsed": 0.5100100040435791,
+      "answer": "税法的规定包括多个方面，比如税务的基本原则、纳税义务、税种、纳税申报、税收管理等。具体而言，内国法人负有缴纳法人税的义务。此外，规定了法人税在损金计算中的处理方式、相关的控除规则、以及对外国法人和个人在特定情况下的纳税义务等。税法还涉及到中间申告、确定申告的相关程序及要求。这些条款的目的是确保税收的合规性和公平性。",
+      "answer_length": 158
+    }
+  },
+  {
+    "question": "退職年金等積立金とは何ですか？",
+    "description": "日语专业术语",
+    "gpt": {
+      "success": true,
+      "provider": "openai",
+      "elapsed": 0.43524718284606934,
+      "answer": "",
+      "answer_length": 0
+    },
+    "gemini": {
+      "success": true,
+      "provider": "gemini",
+      "elapsed": 0.6431930065155029,
+      "answer": "",
+      "answer_length": 0
+    }
+  }
+]

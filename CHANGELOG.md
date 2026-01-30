@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.3.37 (2026-01-30)
+
+### 新功能 - Google Gemini LLM支持
+
+#### 背景
+
+生产环境Cloud Run位于亚洲区域(asia-east1)，调用美国OpenAI API延迟高达25-30秒。为解决延迟问题，添加Google Gemini支持，其在亚洲区域托管，延迟更低。
+
+#### 新增内容
+
+1. **LLM提供商配置**:
+   - 新增 `LLM_PROVIDER` 环境变量，支持 `openai` 和 `gemini`
+   - 默认使用 OpenAI，可切换到 Gemini
+
+2. **模型映射**:
+   | 模式 | OpenAI | Gemini |
+   |------|--------|--------|
+   | fast | gpt-4o-mini | gemini-1.5-flash |
+   | accurate | gpt-4o | gemini-1.5-pro |
+
+3. **依赖更新**:
+   - 添加 `langchain-google-genai`
+   - 添加 `google-generativeai`
+
+4. **测试脚本**:
+   - 新增 `test_gemini_comparison.py` 用于A/B测试对比
+
+#### 配置方式
+
+```bash
+# 使用 Gemini (推荐亚洲用户)
+LLM_PROVIDER=gemini
+GOOGLE_API_KEY=your_google_api_key
+
+# 使用 OpenAI (默认)
+LLM_PROVIDER=openai
+```
+
+#### 预期效果
+
+| 指标 | OpenAI | Gemini |
+|------|--------|--------|
+| 网络延迟 | 高 (US→Asia) | 低 (Asia本地) |
+| 响应时间 | ~25-30秒 | ~5-10秒 |
+| 回答质量 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| 日语支持 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+
 ## 1.3.36 (2026-01-30)
 
 ### 性能优化 - Embedding请求级缓存
