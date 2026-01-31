@@ -3,6 +3,7 @@
  * ChatMax 风格布局
  * 1.1.5: 添加认证页面，未登录显示登录页
  * 1.3.14: 添加对话数据页面路由
+ * 1.3.40: 添加官网落地页路由
  */
 
 import { useState, useEffect } from 'react';
@@ -22,6 +23,7 @@ import { QAPage } from './pages/QAPage'; // 1.3.30: QA问答管理页面
 import { AuthPage } from './pages/AuthPage';
 import { AccountCenterPage } from './pages/AccountCenterPage'; // 1.2.29: 账号中心
 import { FeedbackPage } from './pages/FeedbackPage'; // 1.2.29: 意见反馈
+import { LandingPage } from './pages/LandingPage'; // 1.3.40: 官网落地页
 import { AuthModal } from './components/AuthModal';
 import { getCurrentUser, onAuthStateChange } from './services/authService';
 import { isSupabaseAvailable } from './lib/supabase';
@@ -80,8 +82,10 @@ function App() {
 
   // 1.1.5: 如果用户未登录且不是分享页面，显示认证页面
   // 1.2.6: 只有公开分享链接（带参数）不需要登录，管理页面需要登录
+  // 1.3.40: 落地页不需要登录
   const isPublicShareLink = location.pathname.startsWith('/share/') && location.pathname !== '/share';
-  if (!user && isSupabaseAvailable && !isPublicShareLink && !location.pathname.startsWith('/auth')) {
+  const isLandingPage = location.pathname === '/landing';
+  if (!user && isSupabaseAvailable && !isPublicShareLink && !isLandingPage && !location.pathname.startsWith('/auth')) {
     return <AuthPage />;
   }
 
@@ -90,6 +94,10 @@ function App() {
       <Routes>
         {/* Auth Page - No layout */}
         <Route path="/auth" element={<AuthPage />} />
+        
+        {/* Landing Page - No layout, no login required */}
+        {/* 1.3.40: 官网落地页 */}
+        <Route path="/landing" element={<LandingPage />} />
         
         {/* Public Chat Page - No layout, no login required */}
         {/* 1.2.24: 公开聊天页面，通过 share_token 访问，无需登录 */}
