@@ -4,10 +4,11 @@
  * 1.1.5: 添加认证页面，未登录显示登录页
  * 1.3.14: 添加对话数据页面路由
  * 1.3.40: 添加官网落地页路由
+ * 1.3.80: Landing Page 作为域名主入口，应用主页改为 /app
  */
 
 import { useState, useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
@@ -33,6 +34,7 @@ import './i18n';
 function App() {
   const { t, i18n } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -40,7 +42,11 @@ function App() {
 
   // Check if current route should show sidebar and top nav
   // 1.2.6: 外部分享管理页面显示侧边栏，只有公开分享链接（带参数）不显示
-  const showLayout = !(location.pathname.startsWith('/share/') && location.pathname !== '/share');
+  // 1.3.80: Landing Page (/) 不显示侧边栏
+  const showLayout = !(
+    (location.pathname.startsWith('/share/') && location.pathname !== '/share') ||
+    location.pathname === '/'
+  );
 
   useEffect(() => {
     // Load initial user
@@ -69,6 +75,17 @@ function App() {
     getCurrentUser().then(setUser);
   };
 
+  // 1.3.80: 路径判断变量
+  const isPublicShareLink = location.pathname.startsWith('/share/') && location.pathname !== '/share';
+  const isLandingPage = location.pathname === '/';
+  
+  // 1.3.80: 已登录用户访问 landing page 时，重定向到应用主页
+  useEffect(() => {
+    if (user && isLandingPage && !isLoading) {
+      navigate('/app');
+    }
+  }, [user, isLandingPage, isLoading, navigate]);
+
   // 1.1.5: 加载中显示加载状态
   // 1.2.58: 添加动态点点点效果
   // 1.3.27: 页面loading只显示YUI动画，移除"AI正在思考中"文字
@@ -83,8 +100,7 @@ function App() {
   // 1.1.5: 如果用户未登录且不是分享页面，显示认证页面
   // 1.2.6: 只有公开分享链接（带参数）不需要登录，管理页面需要登录
   // 1.3.40: 落地页不需要登录
-  const isPublicShareLink = location.pathname.startsWith('/share/') && location.pathname !== '/share';
-  const isLandingPage = location.pathname === '/landing';
+  // 1.3.80: Landing Page 改为根路径 /
   if (!user && isSupabaseAvailable && !isPublicShareLink && !isLandingPage && !location.pathname.startsWith('/auth')) {
     return <AuthPage />;
   }
@@ -92,12 +108,13 @@ function App() {
   return (
     <div className="min-h-screen bg-white">
       <Routes>
-        {/* Auth Page - No layout */}
-        <Route path="/auth" element={<AuthPage />} />
-        
         {/* Landing Page - No layout, no login required */}
         {/* 1.3.40: 官网落地页 */}
-        <Route path="/landing" element={<LandingPage />} />
+        {/* 1.3.80: Landing Page 作为域名主入口 */}
+        <Route path="/" element={<LandingPage />} />
+        
+        {/* Auth Page - No layout */}
+        <Route path="/auth" element={<AuthPage />} />
         
         {/* Public Chat Page - No layout, no login required */}
         {/* 1.2.24: 公开聊天页面，通过 share_token 访问，无需登录 */}
@@ -126,7 +143,8 @@ function App() {
                 {/* Page Content */}
                 <main className="flex-1 overflow-y-auto">
                   <Routes>
-                    <Route path="/" element={<AllProjectsPage />} />
+                    {/* 1.3.80: 应用主页改为 /app */}
+                    <Route path="/app" element={<AllProjectsPage />} />
                     <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
                     <Route path="/knowledge-base/documents" element={<KnowledgeBasePage />} />
                     <Route path="/knowledge-base/qa" element={<QAPage />} />

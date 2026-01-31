@@ -1,12 +1,13 @@
 /**
  * 1.1.5: YUIChat 项目 - 认证页面
  * 用户登出后显示的登录/注册页面
+ * 1.3.80: 添加返回 Landing Page 的按钮
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, LogIn, UserPlus, Loader2, CheckCircle } from 'lucide-react';
+import { Mail, Lock, LogIn, UserPlus, Loader2, CheckCircle, ArrowLeft } from 'lucide-react';
 import { signUpWithEmail, signInWithEmail, signInWithGoogle } from '../services/authService';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
@@ -47,7 +48,8 @@ export function AuthPage() {
           setError(result.error.message);
         } else if (result.user) {
           // 登录成功，跳转到主页
-          navigate('/');
+          // 1.3.80: 应用主页改为 /app
+          navigate('/app');
         }
       }
     } catch (err: any) {
@@ -106,9 +108,23 @@ export function AuthPage() {
     );
   }
 
+  // 1.3.80: 返回 Landing Page
+  const handleBackToLanding = () => {
+    navigate('/');
+  };
+
   // 登录/注册页面
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center p-4">
+      {/* 1.3.80: 返回按钮 - 左上角 */}
+      <button
+        onClick={handleBackToLanding}
+        className="absolute top-4 left-4 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all duration-300"
+        title={t('back')}
+      >
+        <ArrowLeft className="w-6 h-6" />
+      </button>
+
       {/* 语言切换按钮 - 右上角 */}
       {/* 1.2.41: 使用 direction="down" 使菜单向下展开 */}
       <div className="absolute top-4 right-4">

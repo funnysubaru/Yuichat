@@ -188,13 +188,14 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
   // 1.0.1: 删除技能中心、创作中心、权益、API 菜单项
   // 1.0.2: 使用多语言
   // 1.3.14: 移除对话数据菜单项（已移到项目菜单中）
+  // 1.3.80: 应用主页改为 /app
   const accountMenuItems = [
-    { icon: FolderOpen, label: t('allProjects'), path: '/', id: 'projects' },
+    { icon: FolderOpen, label: t('allProjects'), path: '/app', id: 'projects' },
   ];
 
   const isActive = (path: string) => {
-    if (path === '/') {
-      return location.pathname === '/';
+    if (path === '/app') {
+      return location.pathname === '/app';
     }
     return location.pathname.startsWith(path);
   };
@@ -325,7 +326,7 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
                 <button
                   onClick={() => {
                     setShowProjectMenu(false);
-                    navigate('/');
+                    navigate('/app'); // 1.3.80: 应用主页改为 /app
                   }}
                   className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-50 transition-colors text-sm text-gray-600"
                 >

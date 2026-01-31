@@ -423,7 +423,8 @@ export function SettingsPage() {
       
       toast.success(t('deleteProjectSuccess'));
       // 跳转到全部项目页面
-      navigate('/');
+      // 1.3.80: 应用主页改为 /app
+      navigate('/app');
     } catch (error) {
       logger.error('Error deleting project:', error);
       toast.error(t('deleteProjectFailed'));
